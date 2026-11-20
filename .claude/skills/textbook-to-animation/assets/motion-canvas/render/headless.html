@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>headless render</title>
+  </head>
+  <body>
+    <div id="status">starting</div>
+    <!-- 放在 motion-canvas/public/headless.html。
+         逻辑必须在 /src/headless.ts 里：public/ 下的文件 Vite 原样返回，不会改写
+         '@motion-canvas/core' 这类裸模块名，内联 import 会报 Failed to resolve module specifier。 -->
+    <script type="module" src="/src/headless.ts"></script>
+  </body>
+</html>
