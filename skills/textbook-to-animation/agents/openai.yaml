@@ -1,0 +1,7 @@
+interface:
+  display_name: '/textbook-to-animation'
+  short_description: '把教材章节改编成 Motion Canvas + Manim 动画讲解视频'
+  icon_small: './assets/icon.svg'
+  icon_large: './assets/icon.svg'
+  brand_color: '#38BDF8'
+  default_prompt: '$textbook-to-animation: 把《XXX》第 3 章 3.2 节做成动画讲解视频，先给我要点清单和教学设计'

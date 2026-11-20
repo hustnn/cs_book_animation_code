@@ -1,6 +1,10 @@
 ---
 name: textbook-to-animation
-description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及“忠实 / 语义 / 观感”三道审查和静态 lint。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。
+description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及“忠实 / 语义 / 观感”三道审查和静态 lint。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
+compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
+metadata:
+  version: "1.0.0"
+  repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
 # 教材 → 动画讲解视频
@@ -147,7 +151,7 @@ description: 把教材、技术书、课程讲义的章节改编成 Motion Canva
 2. **语义审**：逐拍对照“画面在说什么”和“旁白在说什么”——静音只看画面会得出什么结论？会不会和旁白相反？
    标签、颜色、箭头方向是否和概念一致？新手会不会学错？
 3. **观感审**：lint 门槛（见下表）、节奏、叙事顺序、有没有重复的收尾句；最后做一次**新手测试**：
-   让没读过这一章的人（或一个只看旁白和抽帧的子代理）回答设计阶段写的学习目标问题。
+   让没读过这一章的人（或者另开一个没有上下文的 agent 会话，只给它旁白和抽帧）回答设计阶段写的学习目标问题。
 
 问题分级：**P0 讲错或误导**（必须修）、**P1 缺漏或明显影响理解**（应修）、**P2 观感瑕疵**（顺手修）。
 一轮修完后重新跑全部三道审查，直到没有 P0 和 P1。
