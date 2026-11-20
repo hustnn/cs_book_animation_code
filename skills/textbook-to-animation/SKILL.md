@@ -1,9 +1,9 @@
 ---
 name: textbook-to-animation
-description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及“忠实 / 语义 / 观感”三道审查和静态 lint。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
+description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比）和静态 lint。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -22,20 +22,41 @@ metadata:
 而且只核对文字的审查，会漏掉“画面和文字意思相反”这类错误。
 这些失败模式和对应规则的来由，见 `references/failure-modes.md`。
 
+## 贯穿全程的两条原则
+
+1. **原文是唯一的权威，其余都是 outline。** inventory、design、beats 都是对原文的有损压缩。
+   只照着它们生成，它们漏掉的东西动画里就不会有；审查时再拿同一份清单去对，也查不出来。
+   所以写分镜、写场景代码、做审查时，都要回到对应的原文页（含图、图注、侧栏、脚注）。
+   发现原文里有、清单里没有的内容，先补进清单（标注“rN 补”），再往下改。
+2. **多轮迭代，每轮完整保留。** “生成 → 审查 → 修改”按轮次循环，每轮的产物存进 `rounds/<unit>/rN/`，
+   存好后不再改动，修改一律进入下一轮，这样任意两轮都能直接对比。
+   自动审查清零后交给用户看，用户确认满意才算定稿。
+
 ## 每章的产物
 
 ```
 <chapter>/
-├── inventory.md      # 1. 分级要点清单（原文 → 要点，带页码、类型、优先级）
+├── inventory.md      # 1. 分级要点清单（原文 → 要点，带页码、类型、优先级）；每轮可补充，后补的条目标注“rN 补”
 ├── design.md         # 2. 教学设计（学习单元、钩子、误区、核心画面、深度演示、要点 → 载体映射）
-├── beats.md          # 3. 分镜：旁白先行，一拍一行
+├── beats.md          # 3. 分镜：旁白先行，一拍一行（当前工作版本）
 ├── beats.json        # 3'. 从 beats.md 抽出的旁白文本（喂给 TTS）
 ├── audio/<unit>/     # 5. 每拍一个音频文件
 ├── timeline/<unit>.json  # 5'. audio_timeline.py 生成：每拍时长，场景代码据此定时
 ├── subs/<unit>.srt   # 5'. 同一份时间轴生成的字幕
-└── review-<unit>-rN.md   # 7. 每轮审查记录
+└── rounds/<unit>/    # 7. 每轮一个快照目录，存好后只读
+    ├── r1/
+    │   ├── beats.md        # 本轮所用分镜的副本
+    │   ├── timeline.json   # 本轮所用时间轴的副本
+    │   ├── <unit>.mp4      # 本轮成片
+    │   ├── sheet.png       # 每拍抽一帧的联系表
+    │   ├── lint.txt        # lint_scenes.py 的输出
+    │   └── review.md       # 本轮审查、与上一轮的对比、用户反馈
+    ├── r2/ …
+    └── FINAL           # 定稿时写入：定稿轮次（如 r3）、日期、用户确认的原话
 场景代码：motion-canvas/src/scenes/<chapter>/*.tsx、manim/<chapter>/*.py
 ```
+
+场景代码用版本库管理，每轮在 review.md 里记下当时的 commit；没有版本库时，把本轮改过的场景文件也复制进快照目录。
 
 原文全文只放本地临时目录（如 `/tmp/<chapter>-fulltext.txt`），不进版本库（版权），但在 inventory.md 头部写清楚
 怎么重新抽取（`pdftotext -layout -f A -l B book.pdf`，以及书页和 PDF 页的换算）。
@@ -60,6 +81,7 @@ metadata:
 ## 流程
 
 按顺序走，每一步过了门槛再进下一步。整章不要一口气做完：**先做一个学习单元的样片，跑完全部审查，定型后再铺开。**
+第 1、2 步每章做一次；第 3–7 步对每个学习单元按轮次循环（r1 → 审查 → r2 → …），直到定稿。
 
 ### 0. 全书一次性准备
 
@@ -100,6 +122,10 @@ metadata:
 
 ### 3. 分镜（beats.md）——旁白先行
 
+**动笔前先重读原文。** 打开这个单元覆盖的原文页（含图、图注、侧栏、脚注），和 inventory、design 对照着写。
+inventory 和 design 只是 outline，内容以原文为准：例子的细节、数字的语境、图的读法、论证的先后，都从原文取。
+原文里有、清单里没有的要点，先补进 inventory（标注“rN 补”）并定好优先级，再写进分镜。
+
 先写旁白，再为每一拍设计画面。一拍一行：
 
 `拍号 | 旁白（1–2 句，口语）| 画面动作（动词开头：出现/移动/变色/排序/放大…）| 屏幕文字（≤ 15 字）| 要点 ID | 工具`
@@ -138,23 +164,41 @@ metadata:
 ### 6. 实现与渲染
 
 - 先读 `references/motion-canvas.md` 或 `references/manim.md` 里的“坑”一节。
+- **写每个场景前，再对照一遍这些拍对应的原文段落和图。** 标签、数字、图表的坐标和读法以原文为准，
+  不凭分镜里的转述；分镜和原文对不上时，以原文为准，并回头改分镜。
 - 颜色、字体从 theme 引用；文字一律设 `maxWidth` + `textWrap`（Manim 用 `theme.py` 的 `txt()`，会自动缩到安全区内）。
 - 渲染前：MC 跑 `npx tsc --noEmit`，再跑 `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录>`。
 - 渲染：MC 在 `motion-canvas/` 下 `node scripts/render.mjs <场景名>`；Manim `manim -qm <文件> <场景类>`。
 - 渲染后：ffprobe 核对时长；每拍抽一帧拼成联系表（contact sheet），审查时用。
 
-### 7. 三道审查（review-<unit>-rN.md）
+### 7. 审查与多轮迭代（rounds/<unit>/rN/）
 
-完整清单见 `references/review-rubric.md`。三道缺一不可：
+完整清单、每轮流程和报告模板见 `references/review-rubric.md`。每轮做四道审查，缺一不可：
 
-1. **忠实审**：P0/P1 要点逐条打勾；数字、例子、图的读法和原文一致；没有原文之外的论断（引申必须标注）。
-2. **语义审**：逐拍对照“画面在说什么”和“旁白在说什么”——静音只看画面会得出什么结论？会不会和旁白相反？
+1. **忠实审（正向）**：拿 inventory 对成片，P0/P1 要点逐条打勾；数字、例子、图的读法和原文一致；
+   没有原文之外的论断（引申必须标注）。
+2. **反查原文（反向）**：反过来拿原文对成片，逐段读这个单元覆盖的原文页（含图、图注、侧栏、脚注），
+   找成片里没有、**清单里也没有**的内容。正向审只能查出“清单有、成片没有”，清单本身的遗漏只有这一道能发现。
+   查到的先补进 inventory（标注“rN 补”）并定级，再按级别处理。
+3. **语义审**：逐拍对照“画面在说什么”和“旁白在说什么”——静音只看画面会得出什么结论？会不会和旁白相反？
    标签、颜色、箭头方向是否和概念一致？新手会不会学错？
-3. **观感审**：lint 门槛（见下表）、节奏、叙事顺序、有没有重复的收尾句；最后做一次**新手测试**：
+4. **观感审**：lint 门槛（见下表）、节奏、叙事顺序、有没有重复的收尾句；最后做一次**新手测试**：
    让没读过这一章的人（或者另开一个没有上下文的 agent 会话，只给它旁白和抽帧）回答设计阶段写的学习目标问题。
 
 问题分级：**P0 讲错或误导**（必须修）、**P1 缺漏或明显影响理解**（应修）、**P2 观感瑕疵**（顺手修）。
-一轮修完后重新跑全部三道审查，直到没有 P0 和 P1。
+
+**每一轮怎么走：**
+
+1. 建快照目录 `rounds/<unit>/rN/`，放入本轮的 beats.md、timeline.json、成片、联系表、lint 输出。
+2. 做四道审查，写 `review.md`。从 r2 起，开头先写**与上一轮的对比**：改了什么；上一轮的问题哪些修掉了、哪些还在；有没有新冒出来的问题。
+   修改不能引入新问题，所以上一轮已经通过的检查项也要重跑。
+3. 还有 P0 或 P1：修改 inventory、分镜、代码，生成 r(N+1)，回到第 1 步。
+4. 没有 P0 和 P1：把本轮成片、联系表、review 摘要和“与上一轮的差异”交给用户看。
+   用户的反馈原样记进 review.md 的“用户反馈”一节，逐条分级（用户明确要求改的至少算 P1）、写好修法，
+   按反馈修改后生成 r(N+1)，回到第 1 步。
+5. 用户确认满意、不再要求修改：写 `rounds/<unit>/FINAL`（定稿轮次、日期、用户确认的原话），这个单元定稿。
+
+已经存好的轮次目录不再修改，任何修改都进入下一轮；需要回退时，从对应轮次的快照恢复。
 
 ## 质量门槛（lint_scenes.py 检查前五项）
 
@@ -176,6 +220,8 @@ metadata:
 - 不要把工作备注、页码指引放上画面。
 - 不要把原书没有的数字或公式当作书的内容；示意模型也不要用错数学术语（例如说 1/(1−ρ) 有“拐点”）。
 - 不要在一张图里混用两种坐标语义；要变换，就用动画把变换演出来。
+- 不要只照着清单或分镜生成，也不要只拿清单审查：生成和审查都要回到原文。
+- 不要覆盖或修改已经存好的轮次产物；不要在用户确认之前宣布定稿。
 
 ## 文件索引
 
@@ -186,8 +232,8 @@ metadata:
 | `references/tool-routing.md` | 第 4 步拿不准用哪个工具时 |
 | `references/motion-canvas.md` | 写 MC 场景、组件、渲染、拼接混音 |
 | `references/manim.md` | 写 Manim 场景（无 LaTeX 环境、确定性数据、计时） |
-| `references/review-rubric.md` | 第 7 步：三道审查的完整清单和报告模板 |
-| `references/templates.md` | inventory / design / beats / timeline 的空白模板 |
+| `references/review-rubric.md` | 第 7 步：四道审查的完整清单、每轮流程、轮次对比和报告模板 |
+| `references/templates.md` | inventory / design / beats / timeline / 轮次快照的空白模板 |
 | `references/example-unit.md` | 完整示例：一节内容 → 要点清单 → 两个学习单元的设计和分镜 |
 | `scripts/lint_scenes.py` | 渲染前的静态检查 |
 | `scripts/audio_timeline.py` | 音频 → timeline.json + SRT + 拼接清单 |
