@@ -125,3 +125,5 @@ ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map
 | 标签和画面讲的不是一回事 | 语义审；标签文字从 beats.md 的“屏幕文字”列复制，不要凭记忆写 |
 | `npx vite` 偶发 EPERM | `render.mjs` 已优先直接运行本地 `node_modules/vite/bin/vite.js` |
 | 路径里有空格时 `new URL(...).pathname` 变成 `%20` | 用 `fileURLToPath`（`render.mjs` 已处理） |
+| `sequence(delay, …)` 只错开起跑时间、不等前一任务完成；`sequence(0, …)` 等于所有步骤 t=0 并行开始，同属性补间会冲突、动作根本不播（U1 曾有 11 处中招，U3/U5/U6 也遇到过） | 分阶段动作要真串行用 `chain(…)`；`sequence` 的总时长 = 任务数 × delay |
+| `ffmpeg` 抽帧循环不加 `-nostdin` 会吞 stdin，导致文件名截断、联系表错乱 | 抽帧命令一律加 `-nostdin` |
