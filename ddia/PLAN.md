@@ -2,8 +2,8 @@
 
 > 依据：原书 PDF `~/workspace/ddia/ddia.pdf`（Martin Kleppmann《Designing Data-Intensive Applications》，613 页）
 > 与目录文本 `~/workspace/ddia/toc.txt`（目录页 vii–xii，书页 p.3–543）。
-> 已有 demo：`motion-canvas/src/scenes/replication-lag.tsx`（Ch5 复制延迟，44s）、
-> `manim/queueing.py`（Ch1 排队论，32.1s）、`manim/quorum.py`（Ch5 Quorum 证明，37.6s）。
+> 已有 demo：`ch01/motion-canvas/src/scenes/replication-lag.tsx`（Ch5 复制延迟，44s）、
+> `ch01/manim/queueing.py`（Ch1 排队论，32.1s）、`ch01/manim/quorum.py`（Ch5 Quorum 证明，37.6s）。
 > 统一视觉：深色背景 `#0F172A`，蓝 `#38BDF8` / 绿 `#34D399` / 红 `#F87171` / 黄 `#FBBF24` / 紫 `#A78BFA`，
 > 1280×720 30fps，无音频，中文画面文字，中文用 Noto Serif CJK SC。
 > 不渲染视频，只做规划与脚本。原创讲解，不逐字转载原文。
@@ -65,7 +65,7 @@ Ch1 15、Ch2 16、Ch3 15、Ch4 11、Ch5 20、Ch6 14、Ch7 13、Ch8 17、Ch9 16�
 | 1.7 | 可扩展性 Scalability | 60s | MC | 两个系统并排：10 万请求/秒 × 1KB vs 每分钟 3 请求 × 2GB，吞吐量相同、架构完全不同 | 没有“万能扩展秘方”；扩展性是应对负载增长的能力；架构取决于哪些操作常见、哪些罕见（负载参数） |
 | 1.8 | 描述负载 Describing Load | 60s | MC | 推特时间线扇出动画：一次写操作扇出到几十万关注者的时间线 | 负载参数：请求率、读写比、同时活跃用户、缓存命中率；扇出例子：写时扇出 vs 读时组装的取舍 |
 | 1.8b | 推特时间线的两张做法（补图） | 45s | MC | Figure 1-2 三张表 join 拼时间线；Figure 1-3 数字卡 4.6k × 75 = 345k 写/秒、300k 读/秒、最多 31M | 做法1读时组装（follows/users/tweets 三表 join）；做法2写时扇出；写比读少近两个数量级所以做法2划算 |
-| 1.9 | 描述性能 Describing Performance | 75s | MN | **复用 `manim/queueing.py`（32s）**：T=1/(μ−λ) 变形、利用率曲线扫到 ρ=0.97；新增百分位直方图：p50/p95/p99/p99.9 标线 | 响应时间 vs 延迟；均值会骗人，用百分位（p50/p95/p99/p99.9）描述尾部；批处理看吞吐量；利用率越高，排队等待越长 |
+| 1.9 | 描述性能 Describing Performance | 75s | MN | **复用 `ch01/manim/queueing.py`（32s）**：T=1/(μ−λ) 变形、利用率曲线扫到 ρ=0.97；新增百分位直方图：p50/p95/p99/p99.9 标线 | 响应时间 vs 延迟；均值会骗人，用百分位（p50/p95/p99/p99.9）描述尾部；批处理看吞吐量；利用率越高，排队等待越长 |
 | 1.9b | 尾部延迟放大（补图） | 45s | MC | Figure 1-5：7 个后端耗时条（92/76/103/143/86/487/133ms），487ms 红条最长，终端总耗时条与之一样长 | 一个慢调用拖慢整个请求；哪怕只有一小部分调用变慢，终端变慢的比例也会被放大 |
 | 1.10 | 应对负载的方法 Approaches for Coping with Load | 60s | MC | 一台服务器纵向长高 vs 多台服务器横向复制，箭头指向“无共享架构” | 垂直扩展（scale up）vs 水平扩展（scale out）；无共享架构；扩展前先弄清负载假设，假设错了扩展白做 |
 | 1.11 | 可维护性 Maintainability | 45s | 卡片 | 成本饼图：初期开发一小块，长期维护一大块 | 软件成本大头在维护而非开发：修 bug、运维、排障、适配新平台、还技术债、加功能 |
@@ -155,7 +155,7 @@ Ch1 15、Ch2 16、Ch3 15、Ch4 11、Ch5 20、Ch6 14、Ch7 13、Ch8 17、Ch9 16�
 | 5.14 | 多主复制拓扑 Multi-Leader Replication Topologies | 60s | MC | 环形 / 星型 / 全互联三种拓扑切换，消息绕环一周 | 拓扑决定冲突传播路径：环形、星型、全互联；拓扑越复杂，冲突越难收敛 |
 | 5.15 | 无主复制 Leaderless Replication | 60s | MC | 客户端同时写三个节点，没有主库，三个节点并排亮起 | 无主：客户端直接写多个副本；没有主从之分；Dynamo 与 Cassandra 的路线 |
 | 5.16 | 节点宕机时写数据库 Writing to the Database When a Node Is Down | 75s | 衔接 | MC：一个节点宕机，写仍成功（w=2/3）；MN：quorum 数字动画 w + r > n |  quorum 读写：写等 w 个确认，读等 r 个确认；节点宕机时只要 quorum 还在，读写就能继续 |
-| 5.17 | Quorum 一致性的局限 Limitations of Quorum Consistency | 60s | MN | **复用 `manim/quorum.py`（37.6s）**：W=3、R=3、N=5 必相交；W=2、R=2 可为空 | W+R>N 时读写集合必相交；但仍有局限：并发写、时钟偏移、读修复滞后；quorum 不是万能药 |
+| 5.17 | Quorum 一致性的局限 Limitations of Quorum Consistency | 60s | MN | **复用 `ch01/manim/quorum.py`（37.6s）**：W=3、R=3、N=5 必相交；W=2、R=2 可为空 | W+R>N 时读写集合必相交；但仍有局限：并发写、时钟偏移、读修复滞后；quorum 不是万能药 |
 | 5.18 | 宽松 Quorum 与暗示移交 Sloppy Quorums and Hinted Handoff | 60s | MC | 正常 quorum 凑不够时，临时节点代收写，红点暂存，节点恢复后移交 | 节点宕机导致 quorum 凑不够时，用临时节点代收；恢复后把暂存的写“暗示移交”回去；可用性换一致性 |
 | 5.19 | 检测并发写 Detecting Concurrent Writes | 75s | 衔接 | MC：两个并发写版本并排出现；MN：向量时钟分量逐个比较，偏序关系亮起 | 并发写会产生多个版本；向量时钟能判断“并发”还是“先后”；读修复与反熵让副本最终收敛 |
 | 5.20 | Summary | 30s | 卡片 | 单主 / 多主 / 无主三张卡回放 | 本章小结：复制的三种形态与各自的代价 |
@@ -330,9 +330,9 @@ Ch1 15、Ch2 16、Ch3 15、Ch4 11、Ch5 20、Ch6 14、Ch7 13、Ch8 17、Ch9 16�
 
 | 已有产物 | 复用到本表哪一段 | 状态 |
 |---|---|---|
-| `motion-canvas/src/scenes/replication-lag.tsx`（44s） | 5.6 复制延迟的问题（整段复用）；5.2 同步 vs 异步复制（对比段复用） | 已渲染，见 `videos/motion-canvas-replication-lag.mp4` |
-| `manim/quorum.py`（37.6s） | 5.17 Quorum 一致性的局限（整段复用） | 已渲染，见 `videos/manim-quorum.mp4` |
-| `manim/queueing.py`（32.1s） | 1.9 描述性能（前半段复用；后半段百分位直方图需新做） | 已渲染，见 `videos/manim-queueing.mp4` |
+| `ch01/motion-canvas/src/scenes/replication-lag.tsx`（44s） | 5.6 复制延迟的问题（整段复用）；5.2 同步 vs 异步复制（对比段复用） | 已渲染，见 `videos/motion-canvas-replication-lag.mp4` |
+| `ch01/manim/quorum.py`（37.6s） | 5.17 Quorum 一致性的局限（整段复用） | 已渲染，见 `videos/manim-quorum.mp4` |
+| `ch01/manim/queueing.py`（32.1s） | 1.9 描述性能（前半段复用；后半段百分位直方图需新做） | 已渲染，见 `videos/manim-queueing.mp4` |
 | `videos/ch05-combined.mp4`（81.6s） | 5.6 + 5.17 的衔接样片（已验证两工具衔接的剪辑流程） | 已成片 |
 | `videos/combined-motion-manim.mp4`（76.1s） | 跨章风格对照样片，不对应本表任何一段 | 已成片，仅作风格参考 |
 
