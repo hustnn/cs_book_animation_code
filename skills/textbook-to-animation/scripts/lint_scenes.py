@@ -10,7 +10,12 @@
   3. 单次静止（最长的空拍 / waitFor / self.wait）                ≤ --max-hold（默认 6s）
   4. 文字宽度估算超出安全区（未设 maxWidth/textWrap 的 Txt、卡片行）≤ --safe-width（默认 1160px）
   5. 文字卡行数                                                  ≤ --max-card-lines（默认 3）
-  另外给出提示（不计入门槛）：硬编码的十六进制颜色、多个列表共用 key={String(i)}。
+  6. 并行补间冲突：同一 ref().属性 在一组 all(…) / sequence(0, …) 里被补间多次（动作会互相覆盖、播不出来）
+  7. 观众可见文字：画面文字（text=、say()、card 的 title/lines、Manim 的 txt()/Text()）和旁白
+     （场景 import 的 timeline、--narration 指定的 JSON）里不出现书页、图号、“书里/原图”、内部编号；
+     “p6”这类可能是页码的写法记 warn（p50/p99 等百分位不算）
+  8. 时间轴副本一致（给了 --timeline-dir 时）：场景 import 的 timeline 与章节目录里那份逐个比对
+  另外给出提示（不计入门槛）：sequence(0, …)、硬编码的十六进制颜色、多个列表共用 key={String(i)}。
 
 时长从哪来：
 - 用 beat() 写的场景（含 assets/motion-canvas/card.tsx 的文字卡）：解析场景里 `import x from '….json'`
@@ -108,12 +113,142 @@ def load_timeline(scene: Path, src: str):
     return None
 
 
+def timeline_path(scene: Path, src: str):
+    m = re.search(r"import\s+\w+\s+from\s+['\"]([^'\"]+\.json)['\"]", src)
+    return (scene.parent / m.group(1)).resolve() if m else None
+
+
+def load_beats_texts(p: Path):
+    """读 timeline / beats JSON 里的旁白文本：[(拍号, 文本)]。"""
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    beats = data.get("beats", []) if isinstance(data, dict) else data
+    return [(b.get("id", "?"), b.get("text", "")) for b in beats if isinstance(b, dict) and b.get("text")]
+
+
+# ---------- 并行补间冲突 ----------
+# 同一个节点的同一个属性，在一组并行动画（all(...) 或 sequence(0, ...)）里被补间两次，
+# 两个补间会在同一帧互相覆盖，想要的“先去再回”之类的动作根本播不出来。
+
+TARGET = re.compile(r"([A-Za-z_$][\w$]*(?:\[[^\]]+\])?)\(\)\s*\.\s*([A-Za-z_]\w*)\s*\(")
+PAR_ALL = re.compile(r"(?<![\w.$])all\s*\(")
+PAR_SEQ0 = re.compile(r"(?<![\w.$])sequence\s*\(\s*0(?:\.0+)?\s*,")
+
+
+def top_level_args(src: str, open_idx: int):
+    """同 split_top_level_args，但返回 [(在 src 中的起始下标, 去掉首尾空白的文本)]。"""
+    depth, i, start, out, quote = 0, open_idx, open_idx + 1, [], None
+    while i < len(src):
+        c = src[i]
+        if quote:
+            if c == "\\":
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in "'\"`":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                out.append((start, src[start:i]))
+                break
+        elif c == "," and depth == 1:
+            out.append((start, src[start:i]))
+            start = i + 1
+        i += 1
+    return [(s + len(t) - len(t.lstrip()), t.strip()) for s, t in out if t.strip()]
+
+
+def parallel_targets(src: str, open_idx: int, skip_first: bool = False):
+    """一组并行动画里每个参数直接驱动的 (ref, 属性, 位置)；嵌套的 all / sequence(0, …) 一并展开。"""
+    out = []
+    args = top_level_args(src, open_idx)[1 if skip_first else 0:]
+    for pos, text in args:
+        if re.match(r"all\s*\(", text):
+            out += parallel_targets(src, pos + text.index("("))
+        elif re.match(r"sequence\s*\(\s*0(?:\.0+)?\s*,", text):
+            out += parallel_targets(src, pos + text.index("("), skip_first=True)
+        else:
+            m = TARGET.match(text)
+            if m:
+                out.append((m.group(1), m.group(2), pos))
+    return out
+
+
+def tween_conflicts(src: str):
+    """返回 [(行号, 'ref().属性', 次数)]。"""
+    found = {}
+    for rx, skip in ((PAR_ALL, False), (PAR_SEQ0, True)):
+        for m in rx.finditer(src):
+            groups = {}
+            for ref, prop, pos in parallel_targets(src, src.index("(", m.start()), skip):
+                groups.setdefault((ref, prop), []).append(pos)
+            for (ref, prop), poss in groups.items():
+                if len(poss) > 1:
+                    second = sorted(poss)[1]
+                    found[second] = (src.count("\n", 0, second) + 1, f"{ref}().{prop}", len(poss))
+    return [found[k] for k in sorted(found)]
+
+
+# ---------- 观众可见文字 ----------
+# 动画要自包含：画面和旁白里不出现书的页码、图号、“书里/原图”这类说法，也不出现内部编号（U3、b27）。
+
+BOOK_REFS = [
+    (re.compile(r"Figure\s*\d|Fig\.\s*\d|Table\s*\d+\s*[-–.]\s*\d+"), "图表编号"),
+    (re.compile(r"[图表]\s*\d+\s*[-–]\s*\d+"), "图表编号"),
+    (re.compile(r"第\s*\d+\s*页|书页|页码"), "页码"),
+    (re.compile(r"书里|书中|原书|本书|这本书|原图|原表|原文"), "提到原书"),
+    (re.compile(r"\bPart\s+(?:I{1,3}|IV|V|\d)\b"), "原书分部"),
+]
+PAGE_TOKEN = re.compile(r"(?<![A-Za-z0-9])p\.?\s?(\d{1,3})(?![\d.%])")
+PERCENTILES = {"1", "5", "10", "25", "50", "75", "90", "95", "99", "999"}
+INTERNAL_ID = re.compile(r"(?<![A-Za-z0-9_])(U\d{1,2}|u\d{1,2}-[a-z]+\d*|b\d{1,3}[a-z]?\d?)(?![A-Za-z0-9_])")
+
+MC_VISIBLE = [
+    re.compile(r"\btext\s*=\s*\{?\s*" + STR),
+    re.compile(r"\b(?:text|title|kicker)\s*:\s*" + STR),
+    re.compile(r"(?:\bsay|\.text)\(\s*" + STR),
+]
+MANIM_VISIBLE = [re.compile(r"\b(?:txt|Text|MarkupText|Paragraph|Tex|MathTex)\(\s*[rfbu]?" + STR)]
+
+
+def audit_text(text: str):
+    """[(级别, 类别, 命中)]：error 为明确违规；warn 为“可能是页码”（如 p6，需人工确认，p50/p99 这类百分位不算）。"""
+    hits = []
+    for rx, kind in BOOK_REFS:
+        hits += [("error", kind, m.group(0)) for m in rx.finditer(text)]
+    hits += [("warn", "可能是页码", m.group(0)) for m in PAGE_TOKEN.finditer(text) if m.group(1) not in PERCENTILES]
+    hits += [("error", "内部编号", m.group(0)) for m in INTERNAL_ID.finditer(text)]
+    return hits
+
+
+def audit_source(src: str, patterns, where: str):
+    out = []
+    for rx in patterns:
+        for m in rx.finditer(src):
+            text = m.group(2)
+            for level, kind, hit in audit_text(text):
+                out.append((level, where, src.count("\n", 0, m.start()) + 1, kind, hit, text))
+    return out
+
+
 # ---------- Motion Canvas ----------
 
 def lint_mc_scene(path: Path, a):
     src = path.read_text(encoding="utf-8")
     r = {"file": path.name, "kind": "custom", "dur": None, "static": 0.0, "max_hold": 0.0,
          "overflow": [], "hints": []}
+    r["conflicts"] = tween_conflicts(src)
+    r["visible"] = audit_source(src, MC_VISIBLE, path.name)
+    r["timeline_path"] = timeline_path(path, src)
+    seq0 = len(PAR_SEQ0.findall(src))
+    if seq0:
+        r["hints"].append(f"{seq0} 处 sequence(0, …)：等于 all(…)，要串行请用 chain(…)")
 
     timeline = load_timeline(path, src)
     if timeline and "__missing__" in timeline:
@@ -130,13 +265,20 @@ def lint_mc_scene(path: Path, a):
     if is_card:
         r["kind"] = "card"
         args = split_top_level_args(src, card_call + len("makeCardScene"))
+        # 位置参数写法 makeCardScene('kicker', 'title', [...], 'closing', 45) 里的字符串也会上屏
+        for pos, arg in top_level_args(src, card_call + len("makeCardScene")):
+            m = re.fullmatch(STR, arg, re.S)
+            if m:
+                line = src.count("\n", 0, pos) + 1
+                r["visible"] += [(lvl, path.name, line, kind, hit, m.group(2)) for lvl, kind, hit in audit_text(m.group(2))]
         # 卡片的文字行：形如 {text: '…', …}
         lines = []
         for m in re.finditer(r"\{[^{}]*?\btext\s*:\s*" + STR + r"[^{}]*\}", src):
             size = re.search(r"\bsize\s*:\s*(\d+)", m.group(0))
             lines.append((m.group(2), int(size.group(1)) if size else a.card_font))
+        title = re.search(r"\btitle\s*:\s*" + STR, src)
         r["lines"] = len(lines)
-        r["chars"] = sum(len(t) for t, _ in lines)
+        r["chars"] = sum(len(t) for t, _ in lines) + (len(title.group(2)) if title else 0)
         if len(lines) > a.max_card_lines:
             r["card_too_long"] = True
         for t, fs in lines:
@@ -219,7 +361,8 @@ def lint_manim_file(path: Path):
     if hexes:
         hints.append(f"{len(hexes)} 处硬编码颜色（应从 theme 取）")
     return {"file": path.name, "kind": "manim", "dur": round(sum(waits) + sum(runtimes) + implicit, 1),
-            "static": sum(waits), "max_hold": max(waits) if waits else 0.0, "overflow": [], "hints": hints}
+            "static": sum(waits), "max_hold": max(waits) if waits else 0.0, "overflow": [], "hints": hints,
+            "conflicts": [], "visible": audit_source(src, MANIM_VISIBLE, path.name)}
 
 
 # ---------- 报告 ----------
@@ -234,6 +377,10 @@ def main():
     ap.add_argument("--safe-width", type=float, default=1160)
     ap.add_argument("--max-card-lines", type=int, default=3)
     ap.add_argument("--card-font", type=int, default=30, help="卡片行未写 size 时的字号（card.tsx 用 SIZE.body = 30）")
+    ap.add_argument("--narration", type=Path, nargs="*", default=[],
+                    help="额外检查的旁白 JSON（beats.json / timeline.json，或包含它们的目录）；场景 import 的 timeline 会自动检查")
+    ap.add_argument("--timeline-dir", type=Path,
+                    help="章节目录里那份 timeline（如 <chapter>/timeline）：逐个和场景 import 的副本比对，不一致即报错")
     ap.add_argument("--json", type=Path)
     ap.add_argument("--strict", action="store_true", help="有门槛未过时退出码为 1")
     a = ap.parse_args()
@@ -283,21 +430,65 @@ def main():
           f"非卡片场景静止 {static_total:.1f}/{custom_total:.1f}s"
           f"（{(static_total / custom_total if custom_total else 0):.0%}）")
 
+    # 并行补间冲突
+    conflicts = [(r["file"], *c) for r in results for c in r.get("conflicts", [])]
+    if conflicts:
+        print("\n并行补间冲突（同一属性在同一组并行动画里被补间多次，动作播不出来；要先后发生请用 chain）：")
+        for f, line, target, n in conflicts:
+            print(f"  [error] {f} L{line}: {target} ×{n}")
+
+    # 观众可见文字：场景里的画面文字 + 旁白（场景 import 的 timeline、--narration）
+    visible = [v for r in results for v in r.get("visible", [])]
+    imported = {r["timeline_path"] for r in results if r.get("timeline_path")}
+    narration_files = set(imported)
+    for p in a.narration:
+        narration_files |= set(p.rglob("*.json")) if p.is_dir() else {p}
+    for p in sorted(narration_files, key=str):
+        for bid, text in load_beats_texts(Path(p)):
+            visible += [(lvl, f"{Path(p).name} 旁白", bid, kind, hit, text) for lvl, kind, hit in audit_text(text)]
+    vis_errors = [v for v in visible if v[0] == "error"]
+    if visible:
+        print("\n观众可见文字（画面和旁白里不该出现书的页码、图号、“书里/原图”、内部编号）：")
+        for lvl, where, line, kind, hit, text in visible[:60]:
+            loc = f"L{line}" if isinstance(line, int) else str(line)
+            print(f"  [{lvl}] {where} {loc} {kind}「{hit}」：{text[:40]}")
+        if len(visible) > 60:
+            print(f"  …… 共 {len(visible)} 条")
+
+    # 时间轴两份拷贝
+    drift = []
+    if a.timeline_dir:
+        for p in sorted(imported, key=str):
+            twin = a.timeline_dir / Path(p).name
+            if not twin.exists():
+                drift.append((Path(p).name, "章节目录里没有这一份"))
+            elif json.loads(Path(p).read_text(encoding="utf-8")) != json.loads(twin.read_text(encoding="utf-8")):
+                drift.append((Path(p).name, "两份内容不一致：渲染会用场景 import 的那份"))
+        if drift:
+            print(f"\n时间轴副本不一致（场景 import 的 vs {a.timeline_dir}）：")
+            for name, why in drift:
+                print(f"  [error] {name}：{why}")
+
     gates = [
         (f"文字卡时长占比 ≤ {a.max_card_share:.0%}", share <= a.max_card_share, f"{share:.0%}"),
         (f"每个非卡片场景静止占比 ≤ {a.max_static:.0%}", all(r["static_ratio"] <= a.max_static for r in custom), ""),
         (f"单次停顿 ≤ {a.max_hold:g}s", all(r["max_hold"] <= a.max_hold for r in results), ""),
         (f"文字不超出 {a.safe_width:g}px 安全宽度", all(not r["overflow"] for r in results), ""),
         (f"文字卡 ≤ {a.max_card_lines} 行", not any(r.get("card_too_long") for r in results), ""),
+        ("并行补间没有同属性冲突", not conflicts, f"{len(conflicts)} 处" if conflicts else ""),
+        ("观众可见文字不引用书页/图号/内部编号", not vis_errors, f"{len(vis_errors)} 处" if vis_errors else ""),
     ]
-    print("门槛：")
+    if a.timeline_dir:
+        gates.append(("时间轴两份拷贝一致", not drift, f"{len(drift)} 份不一致" if drift else ""))
+    print("\n门槛：")
     for name, ok, val in gates:
         print(f"  [{'PASS' if ok else 'FAIL'}] {name}{('  当前 ' + val) if val else ''}")
 
     if a.json:
-        a.json.write_text(json.dumps({"scenes": results, "card_share": share,
+        a.json.write_text(json.dumps({"scenes": results, "card_share": share, "conflicts": conflicts,
+                                      "visible": visible, "timeline_drift": drift,
                                       "gates": [{"name": n, "pass": ok} for n, ok, _ in gates]},
-                                     ensure_ascii=False, indent=2), encoding="utf-8")
+                                     ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     if a.strict and not all(ok for _, ok, _ in gates):
         sys.exit(1)
 

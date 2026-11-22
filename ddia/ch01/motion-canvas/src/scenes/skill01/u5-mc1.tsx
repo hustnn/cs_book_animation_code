@@ -289,13 +289,15 @@ export default makeScene2D(function* (view) {
   yield* beat('b7b', all(workers[3]().fill(T.red, 0.6), slowTag().opacity(1, 0.6)));
 
   // b8：在线服务看响应时间——请求往返一次，计时条走满整拍
+  // lint（并行补间冲突）：原 sequence(0, 去, 回) 两个 position 补间同时开始、互相覆盖，
+  // 小黄点全程停在客户端，往返没有播出来；改 chain 先去后回（4s < 9.11s）。
   say('在线服务看响应时间');
   yield* beat(
     'b8',
     all(
       g7().opacity(0, 0.5),
       g8().opacity(1, 0.6),
-      sequence(0, dot8().position([330, -60], 2), dot8().position([-360, -60], 2)),
+      chain(dot8().position([330, -60], 2), dot8().position([-360, -60], 2)),
       timer8().width(920, 6),
     ),
   );

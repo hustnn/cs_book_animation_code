@@ -38,8 +38,9 @@
 |---|---|
 | `beats.md`、`timeline.json` | 复制本轮实际使用的版本 |
 | `<unit>.mp4` | 本轮成片（拼接混音后的那份） |
-| `sheet.png` | 每拍抽一帧（取拍的中点，时间来自 timeline.json）：`ffmpeg -ss <t> -i <unit>.mp4 -frames:v 1 frames/<拍号>.png`，再拼成联系表：`ffmpeg -pattern_type glob -i 'frames/*.png' -vf "scale=426:-1,tile=6x5" -frames:v 1 sheet.png`。深色背景下 blackdetect 会误报，不能用它判断黑帧。另外为检查文字重叠，每拍再抽 4–5 帧（拍首 +0.15s、25%、50%、75%、拍末 −0.15s，动画进行中与转场帧也要抽），文字多的帧全分辨率看，Manim 段同标准；抽帧命令加 `-nostdin` |
-| `lint.txt` | `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录> > lint.txt` |
+| `frames/`、`sheet-NN.png`、`frames.md`、`freeze.json` | `python <skill>/scripts/sample_frames.py <unit>.mp4 --timeline timeline.json -o .`：每拍 5 帧全分辨率（拍首 +0.15s、25%、50%、75%、拍末 −0.15s）、一行一拍的联系表（每帧标拍号和时间），以及每拍最长定格。单个场景的视频加 `--scene <场景>.tsx`。深色背景下 blackdetect 会误报，不要用它判断黑帧 |
+| `lint.txt` | `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录> --timeline-dir <chapter>/timeline --narration <chapter> > lint.txt` |
+| `qa/*.qa.json` | 各场景 `node scripts/render.mjs <场景> --qa` 的报告（在 `motion-canvas/output/` 下，复制过来） |
 | `review.md` | 本轮审查完成后写（模板见第 7 节） |
 
 同时打开：inventory.md、design.md，以及**这个单元覆盖的原文页**（反查原文要用）。
@@ -89,12 +90,12 @@
 
 ### 四、观感审（好不好看、看不看得下去）
 
-- [ ] lint 门槛：文字卡 ≤ 15%，静止 ≤ 40%，单次静止 ≤ 6s，无溢出，文字卡 ≤ 3 行。
-- [ ] 每一拍画面都有变化；没有连续两拍的画面一模一样。
+- [ ] lint 全部门槛通过：文字卡 ≤ 15%、无溢出、文字卡 ≤ 3 行、并行补间无冲突、可见文字无书页/图号/内部编号、两份时间轴一致。
+- [ ] 每一拍画面都有变化：看 `frames.md` 的定格表，最长定格 ≥ 6s 的拍必须改（加动作或拆拍），≥ 3s 的要说得出理由；没有连续两拍的画面一模一样。
 - [ ] 叙事顺序：开头是钩子问题，结尾回扣；没有“收尾卡出现在中间”；没有重复的结论句。
 - [ ] 同屏文字 ≤ 3 行；没有审稿备注、页码这类观众用不上的东西。
-- [ ] 文字没有被图形压住：每拍 4–5 帧逐帧看，标签类文字重点查；横条、柱条、线、框都不能从文字中间穿过（有意划掉/打叉除外，核实后保留）。重叠可能只在动画进行中或转场时出现一瞬间，只抽中点帧会漏掉。
-- [ ] 节奏：旁白语速自然（中文约每秒 4–5 字），没有画面已经切走、旁白还在讲上一件事的情况；每拍按字数/时长算语速，异常偏低的拍检查静音结构，确认尾句没有被重复。
+- [ ] 文字没有被图形压住：Motion Canvas 段看 `--qa` 报告，error 必须为 0——每条要么修掉，要么确认是有意的划掉/打叉/遮罩，给那个节点设 `key="qa-ignore-<说明>"` 后重渲；warn（转场叠化中的重叠、轻微骑边）对照联系表扫一眼。Manim 段没有自动检查，逐拍看 `frames/` 里的全分辨率帧：横条、柱条、线、框都不能从文字中间穿过。
+- [ ] 节奏：旁白语速自然（中文约每秒 4–5 字），没有画面已经切走、旁白还在讲上一件事的情况；`audio_timeline.py` 的配音检查没有 error（疑似重复/多读），长停顿 warn 逐条听过；`--qa` 报告里没有 overrun（动画超过旁白）。
 - [ ] **新手测试**：拿 design.md 的学习目标问题，让一个没读过这一章的人回答
   （或者另开一个没有上下文的 agent 会话，只给它旁白文本和联系表，不给原书），记录答错的题和原因。
 

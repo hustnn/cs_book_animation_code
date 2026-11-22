@@ -65,7 +65,8 @@ export default makeScene2D(function* (view) {
         all(dot().opacity(0, 0.4), block().opacity(1, 0.4)),
         all(block().width(560, 3.2), block().height(220, 3.2)),
         all(smallTag().opacity(0, 0.4), bigTag().opacity(1, 0.6)),
-        all(block().width(580, 0.5), block().width(560, 0.5)),
+        // lint（并行补间冲突）：原 all(width→580, width→560) 两个补间同时进行，没有 pulse；改成先放大再回落
+        block().width(580, 0.5).to(560, 0.5),
       ),
     ),
   );

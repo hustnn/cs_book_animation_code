@@ -1,9 +1,9 @@
 ---
 name: textbook-to-animation
-description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比）和静态 lint。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
+description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -69,6 +69,7 @@ metadata:
 |---|---|---|
 | `assets/motion-canvas/theme.ts` | `motion-canvas/src/lib/theme.ts` | 配色、颜色语义、字体、字号、安全区 |
 | `assets/motion-canvas/beats.ts` | `motion-canvas/src/lib/beats.ts` | `beat()`：动画时长由旁白音频决定 |
+| `assets/motion-canvas/qa.ts` | `motion-canvas/src/lib/qa.ts` | 渲染 QA：`--qa` 时逐拍检查文字被压、被线穿过、互叠、出画、动画超时 |
 | `assets/motion-canvas/card.tsx` | `motion-canvas/src/lib/card.tsx` | 文字卡（≤ 3 行，旁白驱动），只用于引言和小结 |
 | `assets/motion-canvas/render/headless.ts` | `motion-canvas/src/headless.ts` | 无头渲染入口 |
 | `assets/motion-canvas/render/headless.html` | `motion-canvas/public/headless.html` | 加载上面的入口 |
@@ -155,10 +156,11 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 1. 把 beats.md 的旁白抽成 `beats.json`（`[{id, text}]`），用 TTS 生成每拍一个音频，放进 `audio/<unit>/<拍号>.wav`。
    TTS 引擎随环境选（云端 TTS、本地开源模型都可以），要求只有两条：全书同一个音色；输出同采样率的 PCM wav。
    第一次用某个引擎前，先合成一两拍试听：多音字、英文术语、数字（“p99”“1.2 秒”）的读法要单独检查。
-   每拍录完先验证再往下走：核对时长与静音结构。按字数/时长算语速，中文约每秒 4–5 字；语速异常偏低的拍，检查尾句是否被重复——有的 TTS 引擎会在固定位置截断、把后半句重复数次（原因见 `references/motion-canvas.md` 坑表）。有重复就把这拍拆成两拍或改写法重录，**不要原句重试**。
+   录完不用手算：下一步的 `audio_timeline.py` 会自动逐拍检查配音——**疑似重复/多读**（有声段语速比单元中位数慢 30% 以上，TTS 在固定位置截断、把后半句重复几遍就是这个特征）记 error、退出码非零；长停顿、语速过快、首尾静音过长记 warn。疑似重复的拍拆成两拍或改写法重录，**不要原句重试**（原因见 `references/motion-canvas.md` 坑表）。脚本只是筛查：英文术语、数字的读法仍要人耳试听。
 2. 运行
-   `python <skill>/scripts/audio_timeline.py audio/<unit> --beats beats.json -o timeline/<unit>.json --srt subs/<unit>.srt --concat-list audio/<unit>.txt`，
-   得到每拍时长、字幕和音频拼接清单。
+   `python <skill>/scripts/audio_timeline.py audio/<unit> --beats beats.json -o timeline/<unit>.json -o motion-canvas/src/timeline/<unit>.json --srt subs/<unit>.srt --concat-list audio/<unit>.txt`，
+   得到每拍时长、字幕、音频拼接清单和配音检查结果。`-o` 给两次：章节目录和 Motion Canvas 工程里的两份时间轴一次写出，
+   不会出现“重算了一份、渲染还在用旧的那份”。同一拍号既有 `.wav` 又有 `.mp3` 时脚本只用 `.wav` 并警告。
 3. 场景代码用 `beat(id, 动画)`：先跑动画，再补等到该拍音频的时长（MC 用 `lib/beats.ts`，Manim 用 `beats.py`）。
    **不要手写 `waitFor(23.1)` 这样的魔法数字。** 还没有音频时，`beat()` 会按旁白字数估算时长，可以先把节奏搭起来。
 4. 视频静音渲染，拼接时用 ffmpeg 把音频混进去（命令见 `references/motion-canvas.md` 的“拼接与混音”一节）。
@@ -169,9 +171,20 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - **写每个场景前，再对照一遍这些拍对应的原文段落和图。** 标签、数字、图表的坐标和读法以原文为准，
   不凭分镜里的转述；分镜和原文对不上时，以原文为准，并回头改分镜。
 - 颜色、字体从 theme 引用；文字一律设 `maxWidth` + `textWrap`（Manim 用 `theme.py` 的 `txt()`，会自动缩到安全区内）。
-- 渲染前：MC 跑 `npx tsc --noEmit`，再跑 `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录>`。
-- 渲染：MC 在 `motion-canvas/` 下 `node scripts/render.mjs <场景名>`；Manim `manim -qm <文件> <场景类>`。
-- 渲染后：ffprobe 核对时长；每拍抽一帧拼成联系表（contact sheet），审查时用；另外每拍再抽 4–5 帧（拍首、25%、50%、75%、拍末，动画进行中与转场帧也要抽），文字多的帧全分辨率核对，检查文字有没有被图形压住（见 `references/review-rubric.md`）。
+- 渲染前：MC 跑 `npx tsc --noEmit`，再跑
+  `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录> --timeline-dir <chapter>/timeline --narration <chapter>`。
+  除了文字卡、静止、超宽这些门槛，它还会拦下三类渲染后很难看出来的问题：**并行补间冲突**（同一属性在一组
+  `all(…)` / `sequence(0, …)` 里被补间两次，“先去再回”“先红后绿”这类动作根本播不出来，定格帧却看着正常）、
+  画面和旁白里的**书页、图号、“书里/原图”、内部编号**、**两份时间轴不一致**。
+- 渲染：MC 在 `motion-canvas/` 下 `node scripts/render.mjs <场景名> --qa`；Manim `manim -qm <文件> <场景类>`。
+  `--qa` 的画面和时长与正常渲染完全一致，同时在每拍 5 个时刻（拍首、25%、50%、75%、拍末）检查文字被图形压住、
+  被线穿过、骑在图形边上、文字互叠、出画，以及动画超过旁白，报告写到 `output/<场景名>.qa.json`。
+  每条 error 要么修掉，要么确认是有意的（划掉、打叉、遮罩）并给那个节点设 `key="qa-ignore-<说明>"`；
+  转场叠化中的重叠只记 warn。
+- 渲染后：`python <skill>/scripts/sample_frames.py <成片或场景视频> --timeline timeline/<unit>.json [--scene <场景>.tsx] -o <输出目录>`：
+  每拍 5 帧全分辨率 + 一行一拍的联系表，以及每拍**真实的最长定格**（freezedetect；≥ 3s 记 warn，≥ 6s 记 error）。
+  lint 的“静止占比”只是静态估算，看不出“动画 0.5 秒做完、剩下 6 秒静止”，以这里的实测为准。
+  `--qa` 覆盖不到 Manim 段，Manim 段的文字仍靠这些全分辨率帧人工核对。
 
 ### 7. 审查与多轮迭代（rounds/<unit>/rN/）
 
@@ -191,7 +204,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 
 **每一轮怎么走：**
 
-1. 建快照目录 `rounds/<unit>/rN/`，放入本轮的 beats.md、timeline.json、成片、联系表、lint 输出。
+1. 建快照目录 `rounds/<unit>/rN/`，放入本轮的 beats.md、timeline.json、成片、`sample_frames.py` 的联系表与定格表、lint 输出和 `--qa` 报告。
 2. 做四道审查，写 `review.md`。从 r2 起，开头先写**与上一轮的对比**：改了什么；上一轮的问题哪些修掉了、哪些还在；有没有新冒出来的问题。
    修改不能引入新问题，所以上一轮已经通过的检查项也要重跑。
 3. 还有 P0 或 P1：修改 inventory、分镜、代码，生成 r(N+1)，回到第 1 步。
@@ -202,15 +215,20 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 
 已经存好的轮次目录不再修改，任何修改都进入下一轮；需要回退时，从对应轮次的快照恢复。
 
-## 质量门槛（lint_scenes.py 检查前五项）
+## 质量门槛
 
-| 指标 | 门槛 |
-|---|---|
-| 文字卡时长占比 | ≤ 15% |
-| 非卡片场景静止占比（空拍或字面量等待 / 场景时长） | ≤ 40% |
-| 单次静止 | ≤ 6s |
-| 文字宽度 | 不超出安全区（1280 宽画布左右各留 60px） |
-| 文字卡行数 | ≤ 3 行 |
+| 指标 | 门槛 | 谁来查 |
+|---|---|---|
+| 文字卡时长占比 | ≤ 15% | lint |
+| 非卡片场景静止占比（空拍或字面量等待 / 场景时长） | ≤ 40% | lint（静态估算） |
+| 文字宽度 | 不超出安全区（1280 宽画布左右各留 60px） | lint |
+| 文字卡行数 | ≤ 3 行 | lint |
+| 并行补间同属性冲突 | 0 | lint |
+| 画面和旁白里的书页、图号、“书里/原图”、内部编号 | 0 | lint |
+| 两份时间轴拷贝 | 一致 | lint `--timeline-dir` |
+| 文字被压、被线穿过、骑在图形边上、互叠、出画；动画超过旁白 | 0 个 error | `render.mjs --qa` |
+| 每拍最长定格 | < 6s（≥ 3s 要说明理由） | `sample_frames.py` |
+| 配音疑似重复/多读 | 0 | `audio_timeline.py` |
 | P0 要点 | 100% 有画面动作 |
 | 单元长度 | 3–6 分钟，每个单元能独立看懂 |
 
@@ -239,6 +257,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | `references/review-rubric.md` | 第 7 步：四道审查的完整清单、每轮流程、轮次对比和报告模板 |
 | `references/templates.md` | inventory / design / beats / timeline / 轮次快照的空白模板 |
 | `references/example-unit.md` | 完整示例：一节内容 → 要点清单 → 两个学习单元的设计和分镜 |
-| `scripts/lint_scenes.py` | 渲染前的静态检查 |
-| `scripts/audio_timeline.py` | 音频 → timeline.json + SRT + 拼接清单 |
-| `assets/` | theme、beat、文字卡、无头渲染管线（复制位置见“搭建”一节） |
+| `scripts/lint_scenes.py` | 渲染前的静态检查：门槛、并行补间冲突、书页/图号/内部编号、时间轴副本 |
+| `scripts/audio_timeline.py` | 音频 → timeline.json（可同时写多份）+ SRT + 拼接清单 + 配音检查 |
+| `scripts/sample_frames.py` | 渲染后：按拍抽帧、联系表、每拍最长定格 |
+| `assets/` | theme、beat、渲染 QA、文字卡、无头渲染管线（复制位置见“搭建”一节） |

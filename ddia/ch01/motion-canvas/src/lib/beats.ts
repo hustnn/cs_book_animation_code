@@ -8,8 +8,12 @@
 //
 // timeline 来自 scripts/audio_timeline.py：{beats: [{id, dur, text}]}。
 // 还没有音频时，也可以直接传 beats.json（[{id, text}]）：按字数估算时长，先把节奏搭起来。
+//
+// QA 模式（render.mjs --qa）下，每拍还会并行跑 qaProbe：在 5 个时刻检查文字重叠/出画，
+// 动画比旁白长时也记进报告。并行的 probe 只读场景树、总长不超过这一拍，画面与时长不变。
 
-import {ThreadGenerator, useLogger, useTime, waitFor} from '@motion-canvas/core';
+import {ThreadGenerator, all, useLogger, useTime, waitFor} from '@motion-canvas/core';
+import {qaEnabled, qaProbe, qaReportOverrun} from './qa';
 
 export interface BeatSpec {
   id: string;
@@ -39,13 +43,16 @@ export function makeBeats(timeline: {beats: BeatSpec[]} | BeatSpec[]) {
       throw new Error(`beat "${id}" 不在 timeline 里（有：${[...durations.keys()].join(', ')}）`);
     }
     const start = useTime();
-    if (anim) {
+    if (qaEnabled()) {
+      yield* anim ? all(anim, qaProbe(id, dur)) : qaProbe(id, dur);
+    } else if (anim) {
       yield* anim;
     }
     const spent = useTime() - start;
     if (spent > dur + 0.05) {
       // 动画比旁白长：整体顺延，并提示去改动画或改旁白，否则后期混音会错位。
       useLogger().warn(`beat ${id}: 动画 ${spent.toFixed(2)}s > 旁白 ${dur.toFixed(2)}s，已顺延`);
+      qaReportOverrun(id, spent, dur);
     }
     yield* waitFor(Math.max(0, dur - spent));
   };

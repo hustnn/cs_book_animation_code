@@ -67,16 +67,28 @@ cd ../manim && python -m venv .venv && .venv/bin/pip install -r requirements.txt
 ## 渲染
 
 ```bash
-# Motion Canvas 单场景（产物在 ch01/motion-canvas/output/<场景>.mp4）
-cd ch01/motion-canvas && node scripts/render.mjs <场景名>
+# 渲染前：类型检查 + 静态 lint（门槛、并行补间冲突、书页/图号/内部编号、两份时间轴是否一致）
+cd ch01/motion-canvas && npx tsc --noEmit
+python ../../../skills/textbook-to-animation/scripts/lint_scenes.py src/scenes/skill01 --manim ../manim/skill01 \
+  --timeline-dir ../skill-ch01/timeline --narration ../skill-ch01
+
+# Motion Canvas 单场景（产物在 ch01/motion-canvas/output/<场景>.mp4）。
+# --qa：画面与时长不变，同时逐拍查文字被压/被线穿过/互叠/出画和动画超时，报告在 output/<场景>.qa.json
+cd ch01/motion-canvas && node scripts/render.mjs <场景名> --qa
 
 # Manim 单场景（-qm：720p 中等质量；不要和 Motion Canvas 写在同一行命令里，
 # 否则渲染批处理脚本的锁检查会把 manim 进程误判为活进程）
 cd ch01/manim && .venv/bin/manim -qm -p <文件>.py <场景类>
 
-# 单元拼片与整章拼片见各章 skill 过程目录下的 assemble 脚本；时间轴重算后必须同步两份
-# 拷贝：<章>/skill-*/timeline/<unit>.json 与 <章>/motion-canvas/src/timeline/<unit>.json
-# （以下命令以 ch01 为例，新章节把 ch01 换成对应章节目录）
+# 渲染后：按拍抽帧 + 联系表 + 每拍最长定格（ffmpeg 可用工程里自带的那份）
+python ../../../skills/textbook-to-animation/scripts/sample_frames.py output/<场景名>.mp4 \
+  --timeline ../skill-ch01/timeline/<unit>.json --scene src/scenes/skill01/<场景名>.tsx -o <输出目录> \
+  --ffmpeg node_modules/@ffmpeg-installer/<平台>/ffmpeg
+
+# 时间轴：audio_timeline.py 的 -o 给两次，一次写出两份拷贝（不再手动同步）：
+#   <章>/skill-*/timeline/<unit>.json 与 <章>/motion-canvas/src/timeline/<unit>.json
+# 单元拼片与整章拼片见各章 skill 过程目录下的 assemble 脚本
+# （以上命令以 ch01 为例，新章节把 ch01 换成对应章节目录）
 ```
 
 ## 环境稳定性（本沙箱偶发故障，渲染前必读）

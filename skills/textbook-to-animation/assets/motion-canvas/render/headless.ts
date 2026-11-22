@@ -4,6 +4,7 @@
 //
 // URL 参数：?scene=<场景名>（只渲染这个场景，产物为 output/<场景名>.mp4；不给则整个 project 拼成一个文件）
 //           &w=1280&h=720&fps=30
+//           &qa=1：QA 模式，beat() 会逐拍检查文字重叠/出画/动画超时，结果在 window.__qaReport
 // 渲染状态写在 window.__render* 上，供 motion-canvas/scripts/render.mjs 轮询。
 
 // @ts-ignore —— ?project 是 Vite 虚拟模块，没有类型声明
@@ -28,6 +29,10 @@ try {
   const width = Number(params.get('w') ?? 1280);
   const height = Number(params.get('h') ?? 720);
   const fps = Number(params.get('fps') ?? 30);
+  if (params.get('qa') === '1') {
+    w.__MC_QA__ = true;
+    w.__qaReport = [];
+  }
 
   if (sceneName) {
     const all = project.scenes.length;

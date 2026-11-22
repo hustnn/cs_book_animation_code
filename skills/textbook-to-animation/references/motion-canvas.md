@@ -98,6 +98,29 @@ Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server
 - 任何一个场景有语法错误都会导致整个 project 加载失败，**渲染前先跑 `npx tsc --noEmit`**。
 - 在沙箱环境里，Chromium 可能因为 `mmap(/proc/self/mem)` 返回 EPERM 起不来（表现为 exit 133 / `Failed to launch the browser process`）。这是环境问题，换环境或换会话再试，不要去改场景。
 
+### QA 模式：`--qa`
+
+`node scripts/render.mjs <场景名> --qa [--strict]`。`headless.ts` 打开 `window.__MC_QA__`，`beat()` 在每一拍并行跑一个只读的
+探针（`lib/qa.ts`），在拍首 +0.15s、25%、50%、75%、拍末 −0.15s 五个时刻遍历场景树，按世界坐标和绘制顺序判断：
+
+| 类型 | 级别 | 含义 |
+|---|---|---|
+| `covered` | error | 图形画在文字之上，盖住文字 ≥ 2%（转场叠化中降为 warn） |
+| `crossed` | error | Line / Spline / 贝塞尔从文字中间穿过 |
+| `edge` | error | 文字骑在下层图形的边上，压住 ≥ 10%（更少或叠化中为 warn） |
+| `text-overlap` | error | 两段文字互相重叠 ≥ 15%（叠化中降为 warn） |
+| `offscreen` | error | 文字超出画面 |
+| `overrun` | error | 这一拍的动画比旁白长，被顺延了 |
+
+降为 warn 的三种情况：转场叠化（任一方不透明度 < 0.6）、半透明高亮（压在文字上的填充实际不透明度 < 0.5）、瞬时（同一对元素只在一个采样点重叠：正在飞入、散开、穿过）。“同一对”按节点身份判断，正在变长的柱子压字会被认作持续的同一个问题。
+
+报告写到 `output/<场景名>.qa.json`，并在终端列出前 40 条（拍号、时刻、哪段文字、和哪个图形）。`--strict` 时有 error 退出码为 2。
+
+- 画面和时长与正常渲染完全一致：探针只读不写，总长不超过这一拍，直接用 QA 渲染的产物当成片也可以。
+- 有意的划掉、打叉、遮罩：给那个节点设 `key="qa-ignore-<说明>"`，它和子节点都不参与检查。
+- 判断用的是节点自身的包围盒，不是像素：圆角、细描边、旋转后的空白角可能造成少量误报，error 也要对照帧确认再改。
+- 只覆盖用 `beat()` 计时的 Motion Canvas 场景；Manim 段和不用 `beat()` 的旧场景仍要人工看帧（`sample_frames.py`）。
+
 ## 6. 拼接与混音
 
 场景静音渲染（`includeAudio: false`），音频单独处理：
@@ -125,9 +148,9 @@ ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map
 | 标签和画面讲的不是一回事 | 语义审；标签文字从 beats.md 的“屏幕文字”列复制，不要凭记忆写 |
 | `npx vite` 偶发 EPERM | `render.mjs` 已优先直接运行本地 `node_modules/vite/bin/vite.js` |
 | 路径里有空格时 `new URL(...).pathname` 变成 `%20` | 用 `fileURLToPath`（`render.mjs` 已处理） |
-| `sequence(delay, …)` 只错开起跑时间、不等前一任务完成；`sequence(0, …)` 等于所有步骤 t=0 并行开始，同属性补间会冲突、动作根本不播（曾有一章里 11 处分阶段动作因此根本没播出来） | 分阶段动作要真串行用 `chain(…)`；`sequence` 的总时长 = 任务数 × delay |
-| `ffmpeg` 抽帧循环不加 `-nostdin` 会吞 stdin，导致文件名截断、联系表错乱 | 抽帧命令一律加 `-nostdin` |
-| 时间轴有两份拷贝：`timeline/<unit>.json`（章节目录里那份）与 Motion Canvas 场景 import 的 `motion-canvas/src/timeline/<unit>.json` 是独立的；重算时间轴后不把新文件同步到 `src/timeline/`，渲染会静默用旧时长 | 时间轴重算后立即同步两份拷贝，并核对渲染时长与新时间轴一致 |
+| `sequence(delay, …)` 只错开起跑时间、不等前一任务完成；`sequence(0, …)` 等于所有步骤 t=0 并行开始，同属性补间会冲突、动作根本不播（曾有一章里 11 处分阶段动作因此根本没播出来，人工复审后又漏了 3 处：定格帧看起来是对的） | 分阶段动作要真串行用 `chain(…)`；`sequence` 的总时长 = 任务数 × delay。`lint_scenes.py` 会报出同一 `ref().属性` 在一组并行动画里被补间两次的地方 |
+| `ffmpeg` 抽帧循环不加 `-nostdin` 会吞 stdin，导致文件名截断、联系表错乱 | 用 `sample_frames.py`（已加 `-nostdin`）；自己写抽帧命令时一律加 |
+| 时间轴有两份拷贝：`timeline/<unit>.json`（章节目录里那份）与 Motion Canvas 场景 import 的 `motion-canvas/src/timeline/<unit>.json` 是独立的；重算时间轴后不把新文件同步到 `src/timeline/`，渲染会静默用旧时长 | `audio_timeline.py` 的 `-o` 给两次，一次写出两份；`lint_scenes.py --timeline-dir` 会比对两份是否一致 |
 | 渲染批处理脚本的锁检查会把调用方同一行命令里的 `manim -qm` 误判为活进程（LOCK-BUSY） | Motion Canvas 渲染与 Manim 渲染分两次调用，不要写在同一行命令里 |
-| `audio_timeline.py` 按文件名 stem 建键，同一拍同时有 `.mp3` 与 `.wav` 时会撞键，丢掉垫音（曾有一拍因此丢了 8 秒多的垫音） | 重算时间轴前先清掉多余的 `.mp3`，只留 `.wav` |
-| TTS 文本触发型缺陷：某句旁白在固定位置截断、后半句重复（如旁白「第六，运行时自检」在固定位置截断后重复数次）；同句重录、换写法仍在同一点截断 | 不要原句重试；把这拍拆成两拍或改写法，录完先核对时长与静音结构再进渲染 |
+| `audio_timeline.py` 按文件名 stem 建键，同一拍同时有 `.mp3` 与 `.wav` 时会撞键，丢掉垫音（曾有一拍因此丢了 8 秒多的垫音） | 已修：同一拍号有多个格式时脚本只用 `.wav` 并警告；仍建议删掉多余的 `.mp3` |
+| TTS 文本触发型缺陷：某句旁白在固定位置截断、后半句重复（如旁白「第六，运行时自检」在固定位置截断后重复数次）；同句重录、换写法仍在同一点截断 | 不要原句重试；把这拍拆成两拍或改写法。`audio_timeline.py` 的配音检查会把这类拍标成“疑似重复/多读”（有声段语速明显偏慢） |

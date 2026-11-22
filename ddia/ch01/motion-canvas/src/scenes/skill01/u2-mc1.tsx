@@ -464,11 +464,12 @@ export default makeScene2D(function* (view) {
   yield* beat('b7', all(cards[3]().stroke(T.green, 0.8), cardTxt[3]().opacity(1, 0.8)));
 
   // b8：四张卡合进一句话，系统挨一击，输出仍正确（6.42s）
+  // lint（并行补间冲突）：原 sequence(0, …) 让“变红”“变绿”两个 stroke 补间同时开始，红色一击没播出来；
+  // 改 chain 依次进行：换组 → 故障点撞上 → 闪红 → 恢复绿 → 输出正确（共 3.7s < 6.42s）。
   say('出错还能正确工作');
   yield* beat(
     'b8',
-    sequence(
-      0,
+    chain(
       all(g3().opacity(0, 0.5), g8().opacity(1, 0.5)),
       faultDot().position([0, -40], 1.2),
       sysBox().stroke(T.red, 0.4),
