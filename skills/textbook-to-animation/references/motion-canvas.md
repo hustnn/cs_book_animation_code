@@ -167,6 +167,14 @@ Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server
 
 报告写到 `output/<场景名>.qa.json`，并在终端列出前 40 条（拍号、时刻、哪段文字、和哪个图形）。`--strict` 时有 error 退出码为 2。
 
+整章一起查用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`：逐个场景 `--qa` 渲染（默认只重渲内容改过的场景），
+汇总写到 `output/qa-summary.md` / `.json`——门槛结论、每个场景一行、要修的 error 清单（按场景、时刻排好）、
+静止 3–6s 的拍、没有用 `beat()` 计时因而查不到的场景。场景名单取 `project.ts` 里登记过的；
+目录里有像场景却没登记的文件会被报出来（render.mjs 渲染不了它们）。
+“改过”按内容判断：每次渲染成功后记下场景和它 import 的文件的指纹，内容没变（切分支、复制同样的文件）就不重渲；
+只认它自己渲染、带指纹的报告，直接用 render.mjs 渲的报告会被重渲一次。场景渲染失败（比如抛错）时
+`render.mjs` 不写 QA 报告，汇总里记为“渲染失败”，不会被当成 0 error。
+
 - 画面和时长与正常渲染完全一致：探针只读不写，总长不超过这一拍，直接用 QA 渲染的产物当成片也可以。
 - 有意的划掉、打叉、遮罩：给那个节点设 `key="qa-ignore-<说明>"`，它和子节点都不参与检查。
 - 判断用的是节点几何，不是像素：文字框按整行算（字形四周的留白也算在内），error 修之前对照帧看一眼是哪种情况；

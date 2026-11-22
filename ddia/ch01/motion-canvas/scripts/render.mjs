@@ -10,7 +10,7 @@
 // 依赖：devDependencies 里的 vite、puppeteer；@motion-canvas/vite-plugin 和 @motion-canvas/ffmpeg 已在 vite.config.ts 启用。
 
 import {spawn} from 'node:child_process';
-import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import puppeteer from 'puppeteer';
 
@@ -129,7 +129,11 @@ try {
       const secs = ((Date.now() - t0) / 1000).toFixed(1);
       console.log(`[render] finished: ${state.result} (0 = Success) in ${secs}s`);
       process.exitCode = state.result === 0 ? 0 : 1;
-      if (QA) {
+      if (QA && state.result !== 0) {
+        // 渲染失败（场景抛错等）时探针没跑完，报告是空的或不全：不写，免得被当成“0 error”
+        rmSync(`${ROOT}output/${SCENE || 'project'}.qa.json`, {force: true});
+        console.error('[qa] 渲染失败，不写 QA 报告');
+      } else if (QA) {
         // __qaFinalize：把只在一个采样点出现的重叠降为 warn（瞬时），见 lib/qa.ts
         const findings = await page.evaluate(() => (window.__qaFinalize ? window.__qaFinalize() : window.__qaReport) ?? []);
         const errors = writeQaReport(findings);
