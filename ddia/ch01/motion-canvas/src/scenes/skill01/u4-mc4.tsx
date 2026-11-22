@@ -4,6 +4,7 @@
 // 分布曲线为长尾示意形状（原文只说“分布极不均匀”，未给曲线，画面不标具体数值）。
 // 时长全部来自 timeline/u4.json（beat() 驱动），不手写 waitFor 魔法数字。
 // 动画排序用 sequence()（先后步骤），不用 chain(waitFor()) 堆字面等待。
+import {attach} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, sequence} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -40,6 +41,7 @@ export default makeScene2D(function* (view) {
   const cap40 = createRef<Txt>();
   const g41 = createRef<Node>();
   const q41 = createRef<Txt>();
+  const card41 = createRef<Rect>();
   const g42 = createRef<Node>();
   const distBars = [0, 1, 2, 3, 4, 5, 6, 7].map(() => createRef<Rect>());
 
@@ -176,9 +178,9 @@ export default makeScene2D(function* (view) {
 
       {/* b41：负载仪表盘空白，留一个问号 */}
       <Node ref={g41} opacity={0}>
-        <Rect position={[0, -40]} width={760} height={260} radius={20} fill={T.card} stroke={T.line} lineWidth={2} />
+        <Rect ref={card41} position={[0, -40]} width={760} height={260} radius={20} fill={T.card} stroke={T.line} lineWidth={2} />
         <Txt position={[0, -40]} fontSize={96} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'?'} />
-        <Txt ref={q41} position={[0, 90]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} opacity={0} text={'哪个数字翻倍，先扛不住？'} />
+        <Txt ref={q41} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} opacity={0} text={'哪个数字翻倍，先扛不住？'} />
       </Node>
 
       {/* b42：负载仪表盘淡出，响应时间分布图亮起 */}
@@ -201,6 +203,9 @@ export default makeScene2D(function* (view) {
       </Node>
     </>,
   );
+
+  // QA r4（类 E）：问题原在 y=90，正好压在卡片下边框上；改放在卡片内侧、离下边框 22px
+  attach(q41(), card41(), 'bottom', 22, true);
 
   // b34：关注者分布本身就是关键负载参数——曲线画出，尾部标红，标签后出
   say('分布决定扇出负载');

@@ -3,12 +3,14 @@
 //   2. Puppeteer 打开 public/headless.html（逻辑在 src/headless.ts）
 //   3. 轮询 window.__renderResult，结束后退出
 //
-// 用法（在 motion-canvas/ 目录下）：node scripts/render.mjs <场景名> [--port 9000] [--timeout 600] [--w 1280 --h 720 --fps 30]
+// 用法（在 motion-canvas/ 目录下）：node scripts/render.mjs <场景名> [--qa [--strict]] [--port 9000] [--timeout 600] [--w 1280 --h 720 --fps 30]
 // 产物：output/<场景名>.mp4（不给场景名时整个 project 拼成 output/project.mp4）
+// --qa：QA 模式（画面与时长不变），逐拍检查文字重叠/出画/动画超时，报告写到 output/<场景名>.qa.json；
+//       --strict 时有 error 级问题退出码为 2。
 // 依赖：devDependencies 里的 vite、puppeteer；@motion-canvas/vite-plugin 和 @motion-canvas/ffmpeg 已在 vite.config.ts 启用。
 
 import {spawn} from 'node:child_process';
-import {existsSync} from 'node:fs';
+import {existsSync, mkdirSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import puppeteer from 'puppeteer';
 
@@ -19,10 +21,13 @@ const opt = (name, def) => {
 };
 const valueFlags = new Set(['--port', '--timeout', '--w', '--h', '--fps']);
 const SCENE = argv.find((a, i) => !a.startsWith('--') && !valueFlags.has(argv[i - 1])) ?? '';
+const QA = argv.includes('--qa');
+const STRICT = argv.includes('--strict');
 const PORT = Number(opt('port', 9000));
 const TIMEOUT_MS = Number(opt('timeout', 600)) * 1000;
 const query = new URLSearchParams({w: opt('w', '1280'), h: opt('h', '720'), fps: opt('fps', '30')});
 if (SCENE) query.set('scene', SCENE);
+if (QA) query.set('qa', '1');
 const PAGE_URL = `http://127.0.0.1:${PORT}/headless.html?${query}`;
 
 // 用 fileURLToPath 而不是 URL#pathname：路径里有空格时 pathname 会变成 %20
@@ -30,6 +35,25 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const VITE_BIN = fileURLToPath(new URL('../node_modules/vite/bin/vite.js', import.meta.url));
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function writeQaReport(findings) {
+  const outDir = `${ROOT}output`;
+  mkdirSync(outDir, {recursive: true});
+  const file = `${outDir}/${SCENE || 'project'}.qa.json`;
+  writeFileSync(file, JSON.stringify(findings, null, 2));
+  const errors = findings.filter(f => f.severity === 'error');
+  const warns = findings.filter(f => f.severity === 'warn');
+  const byKind = {};
+  for (const f of findings) byKind[`${f.severity}:${f.kind}`] = (byKind[`${f.severity}:${f.kind}`] ?? 0) + 1;
+  console.log(`[qa] ${errors.length} error / ${warns.length} warn  ${JSON.stringify(byKind)}  → ${file}`);
+  for (const f of [...errors, ...warns].slice(0, 40)) {
+    const at = f.times.map(t => t.toFixed(2)).join(', ');
+    const other = f.other ? `  ↔ ${f.other}` : '';
+    const ratio = f.ratio !== undefined ? ` (${Math.round(f.ratio * 100)}%)` : '';
+    console.log(`[qa] ${f.severity.padEnd(5)} ${f.beat.padEnd(6)} ${f.kind.padEnd(12)} t=${at}  “${f.text}”${other}${ratio}`);
+  }
+  return errors.length;
+}
 
 async function waitForServer() {
   const start = Date.now();
@@ -105,6 +129,12 @@ try {
       const secs = ((Date.now() - t0) / 1000).toFixed(1);
       console.log(`[render] finished: ${state.result} (0 = Success) in ${secs}s`);
       process.exitCode = state.result === 0 ? 0 : 1;
+      if (QA) {
+        // __qaFinalize：把只在一个采样点出现的重叠降为 warn（瞬时），见 lib/qa.ts
+        const findings = await page.evaluate(() => (window.__qaFinalize ? window.__qaFinalize() : window.__qaReport) ?? []);
+        const errors = writeQaReport(findings);
+        if (STRICT && errors > 0 && process.exitCode === 0) process.exitCode = 2;
+      }
       break;
     }
     await sleep(2000);

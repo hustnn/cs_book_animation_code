@@ -4,6 +4,7 @@
 // b13 配音偏慢（--speed 90，11.47s）：数据分片滑入 + 复杂度团慢慢膨胀，动作铺满整拍。
 // 时长全部来自 timeline/u7.json（beat() 驱动），不手写 waitFor 魔法数字。
 // 错峰出现用 sequence / delay（Motion Canvas 标准流控）。
+import {row} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, delay, sequence} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -79,7 +80,8 @@ export default makeScene2D(function* (view) {
       {/* b12：无状态随便加 vs 有状态拖着数据 */}
       <Node ref={g12} opacity={0}>
         <Txt position={[-300, -230]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'无状态服务'} />
-        {[-390, -300, -210].map((x, i) => (
+        {/* QA r4（类 C）：原 x = -390/-300/-210，间距 90 小于方块宽 150，三个方块互相叠住；改用 row() 由宽度算间距 */}
+        {row(3, 150, 20, [-300, -40]).map(([x], i) => (
           <Rect key={`u7-sl-${i}`} ref={statelessNodes[i]} position={[x, -40]} width={150} height={130} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
             <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'节点'} />
           </Rect>

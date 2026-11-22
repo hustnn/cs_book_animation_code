@@ -3,6 +3,7 @@
 //
 // 和普通场景一样由旁白驱动：标题和每一行各占一拍，时长来自 timeline。
 // 最多 3 行——更多内容说明它不该是一张卡，应该交给旁白或画面。
+// 整张卡在所有拍里缓慢推近（1 → 1.04），避免引言、小结这类拍长时间完全静止（渲染 QA 的 idle 检查）。
 //
 // 用法（一个文件只能导出一个场景）：
 //   import {makeCardScene} from '../../lib/card';
@@ -48,6 +49,7 @@ export function makeCardScene(o: CardOptions) {
     const beat = makeBeats(o.timeline);
 
     const kicker = createRef<Txt>();
+    const body = createRef<Layout>();
     const title = createRef<Txt>();
     const lineRefs = o.lines.map(() => createRef<Txt>());
 
@@ -64,7 +66,7 @@ export function makeCardScene(o: CardOptions) {
           text={o.kicker ?? ''}
         />
         {/* 纵向自动排版：行数、换行变化时不用手算坐标；透明的行也占位，所以后出现的行不会挤动前面的行 */}
-        <Layout layout direction={'column'} alignItems={'center'} gap={36} width={SAFE.width}>
+        <Layout ref={body} layout direction={'column'} alignItems={'center'} gap={36} width={SAFE.width}>
           <Txt
             ref={title}
             fontSize={SIZE.title}
@@ -95,9 +97,18 @@ export function makeCardScene(o: CardOptions) {
       </>,
     );
 
-    yield* beat(o.titleBeat, all(kicker().opacity(1, 0.5), title().opacity(1, 0.6)));
+    // 缓慢推近：按各拍时长分段，推近贯穿整张卡
+    const ids = [o.titleBeat, ...o.lines.map(l => l.beat)];
+    const total = ids.reduce((s, id) => s + beat.dur(id), 0) || 1;
+    let elapsed = 0;
+    const drift = (id: string) => {
+      elapsed += beat.dur(id);
+      return body().scale(1 + (0.04 * elapsed) / total, beat.dur(id));
+    };
+
+    yield* beat(o.titleBeat, all(kicker().opacity(1, 0.5), title().opacity(1, 0.6), drift(o.titleBeat)));
     for (let i = 0; i < o.lines.length; i++) {
-      yield* beat(o.lines[i].beat, lineRefs[i]().opacity(1, 0.5));
+      yield* beat(o.lines[i].beat, all(lineRefs[i]().opacity(1, 0.5), drift(o.lines[i].beat)));
     }
     // 不做淡出：段与段之间的转场在拼接时统一处理，避免多出旁白之外的时长。
   });

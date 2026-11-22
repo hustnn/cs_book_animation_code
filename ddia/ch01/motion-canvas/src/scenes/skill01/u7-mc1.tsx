@@ -4,6 +4,7 @@
 // 时长全部来自 timeline/u7.json（beat() 驱动），不手写 waitFor 魔法数字。
 // 错峰出现用 sequence / delay（Motion Canvas 标准流控），动画尽量铺满整拍。
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
+import {attach} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, delay, sequence} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -37,6 +38,7 @@ export default makeScene2D(function* (view) {
   const g6 = createRef<Node>();
   const cheapBar = createRef<Rect>();
   const priceBar = createRef<Rect>();
+  const heavyTag = createRef<Txt>();
   const g7 = createRef<Node>();
   const strongGroup = createRef<Node>();
   const vmGroup = createRef<Node>();
@@ -146,14 +148,16 @@ export default makeScene2D(function* (view) {
       {/* b6：单机简单便宜起步，高端机器标价飙升 */}
       <Node ref={g6} opacity={0}>
         <Txt position={[-300, -230]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'单机起步'} />
-        <Rect position={[-300, -40]} width={220} height={160} radius={16} fill={T.card} stroke={T.green} lineWidth={2} />
-        <Txt position={[-300, -40]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'简单 · 便宜'} />
-        <Rect ref={cheapBar} position={[-300, 120]} offset={[0, 1]} width={220} height={10} radius={6} fill={T.green} />
+        {/* QA r4（类 A）：价格条原从 y=120 长到 240 高，顶端扫过机器卡片和“很贵”；卡片上移、条的基线下移，
+            给条留出终态所需的通道（最高 230，顶端停在卡片下边以下） */}
+        <Rect position={[-300, -110]} width={220} height={140} radius={16} fill={T.card} stroke={T.green} lineWidth={2} />
+        <Txt position={[-300, -110]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'简单 · 便宜'} />
+        <Rect ref={cheapBar} position={[-300, 210]} offset={[0, 1]} width={220} height={10} radius={6} fill={T.green} />
         <Txt position={[300, -230]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'高端机器'} />
-        <Rect position={[300, -40]} width={220} height={160} radius={16} fill={T.card} stroke={T.red} lineWidth={2} />
-        <Txt position={[300, -40]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'很贵'} />
-        <Rect ref={priceBar} position={[300, 120]} offset={[0, 1]} width={220} height={10} radius={6} fill={T.red} />
-        <Txt position={[300, 170]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'重负载绕不开横向'} />
+        <Rect position={[300, -110]} width={220} height={140} radius={16} fill={T.card} stroke={T.red} lineWidth={2} />
+        <Txt position={[300, -110]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'很贵'} />
+        <Rect ref={priceBar} position={[300, 210]} offset={[0, 1]} width={220} height={10} radius={6} fill={T.red} />
+        <Txt ref={heavyTag} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'重负载绕不开横向'} />
       </Node>
 
       {/* b7：务实混合——几台强机 vs 一大群小虚拟机 */}
@@ -190,6 +194,9 @@ export default makeScene2D(function* (view) {
       </Node>
     </>,
   );
+
+  // 结论标签挂在价格条下方（基线之下），不放进条的生长通道
+  attach(heavyTag(), priceBar(), 'bottom', 12);
 
   // b1：钩子——适合今天负载的架构，扛得住 10 倍负载吗？
   // 箭头画满 1.5s，两道裂缝错开出现（旁白说到“大概率扛不住”时裂开）
@@ -258,7 +265,7 @@ export default makeScene2D(function* (view) {
       g5().opacity(0, 0.5),
       g6().opacity(1, 0.6),
       cheapBar().height(40, 2.0),
-      priceBar().height(240, 4.5),
+      priceBar().height(230, 4.5),
     ),
   );
 

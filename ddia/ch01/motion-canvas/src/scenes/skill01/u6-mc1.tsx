@@ -3,6 +3,7 @@
 // 时长全部来自 timeline/u6.json（beat() 驱动），不手写 waitFor。
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
 // 队头阻塞队列场景是示意（inventory N6）：2 个处理窗口，窗口数与耗时是演示设定。
+import {attach} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, createRef, sequence} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -127,7 +128,6 @@ export default makeScene2D(function* (view) {
           <Txt
             key={`u6-fast-${i}`}
             ref={fastTags[i]}
-            position={[-300 + i * 300, -40]}
             fontSize={SIZE.label}
             fill={T.green}
             fontFamily={FONT.sans}
@@ -150,6 +150,10 @@ export default makeScene2D(function* (view) {
       </Node>
     </>,
   );
+
+  // QA r4（类 B）：“本身很快 ✓”原借用窗口的 x 坐标摆在 y=-40，压在“慢请求”“窗口 2”框的下边上，
+  // 读起来像在说慢请求本身很快；改挂在它描述的排队请求（“等 N s”）下面
+  fastTags.forEach((t, i) => attach(t(), waitLabels[i](), 'bottom', 10));
 
   // b1：钩子——服务器说 50ms，用户等了 3s，谁在撒谎？
   // r2（P2 1-4）：淡入只有 0.6s，尾部加缓慢缩放填满拍尾（5.9s < 6.422s）。

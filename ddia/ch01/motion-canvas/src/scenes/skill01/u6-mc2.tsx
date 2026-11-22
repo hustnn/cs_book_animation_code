@@ -5,6 +5,7 @@
 // 闭环/开环的“2 秒发 1 个 / 20 个”是示意数字（inventory N4），角落标“示意”。
 // 时长全部来自 timeline/u6.json（beat() 驱动），不手写 waitFor。
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
+import {attach} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -23,6 +24,8 @@ export default makeScene2D(function* (view) {
   const g9 = createRef<Node>();
   const g9green = [0, 1, 2].map(() => createRef<Rect>());
   const g9red = [0, 1, 2].map(() => createRef<Rect>());
+  const g9greenTag = [0, 1, 2].map(() => createRef<Txt>());
+  const g9redTag = [0, 1, 2].map(() => createRef<Txt>());
   const g10 = createRef<Node>();
   const g10green = [0, 1, 2].map(() => createRef<Txt>());
   const g10red = [0, 1, 2].map(() => createRef<Txt>());
@@ -84,9 +87,9 @@ export default makeScene2D(function* (view) {
           <Node key={`u6-timer-${i}`}>
             <Txt position={[-420, -140 + i * 110]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={`请求 ${i + 1}`} />
             <Rect ref={g9green[i]} position={[-260, -140 + i * 110]} offset={[-1, 0]} width={0} height={40} radius={8} fill={T.green} />
-            <Txt position={[-140, -140 + i * 110]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'服务端 50 ms'} />
+            <Txt ref={g9greenTag[i]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} opacity={0} text={'服务端 50 ms'} />
             <Rect ref={g9red[i]} position={[60, -140 + i * 110]} offset={[-1, 0]} width={0} height={40} radius={8} fill={T.red} />
-            <Txt position={[470, -140 + i * 110]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'客户端 3 s'} />
+            <Txt ref={g9redTag[i]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} opacity={0} text={'客户端 3 s'} />
           </Node>
         ))}
       </Node>
@@ -237,6 +240,13 @@ export default makeScene2D(function* (view) {
     </>,
   );
 
+  // QA r4（类 A）：计时标签原摆在固定坐标、紧挨计时条的终点，条一长出来就盖住标签开头（只剩“端 50 ms”“户端 3 s”）；
+  // 改为贴在计时条右端外侧，条变长时标签跟着往右走
+  [0, 1, 2].forEach(i => {
+    attach(g9greenTag[i](), g9green[i](), 'right', 12);
+    attach(g9redTag[i](), g9red[i](), 'right', 12);
+  });
+
   // b9：服务端只记处理时间，排队的时间只有客户端看得见——绿条短、红条长，三行先后长出
   say('在客户端测');
   yield* beat(
@@ -245,7 +255,15 @@ export default makeScene2D(function* (view) {
       g9().opacity(1, 0.6),
       sequence(
         1.4,
-        ...[0, 1, 2].map(i => all(g9green[i]().width(90, 0.9), g9red[i]().width(380, 1.2))),
+        // QA orphan：每行的两个读数和它那一行的计时条一起出现（原来三行读数在拍首一起出现，第三行要空等 2s 才有条）
+        ...[0, 1, 2].map(i =>
+          all(
+            g9green[i]().width(90, 0.9),
+            g9red[i]().width(380, 1.2),
+            g9greenTag[i]().opacity(1, 0.4),
+            g9redTag[i]().opacity(1, 0.4),
+          ),
+        ),
       ),
     ),
   );

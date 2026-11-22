@@ -88,8 +88,9 @@ export default makeScene2D(function* (view) {
           <Txt position={[0, -40]} fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'万能扩展秘方'} />
           <Txt position={[0, 40]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'magic scaling sauce'} />
         </Node>
-        <Line ref={crossX1} points={[[-160, -200], [160, 120]]} stroke={T.red} lineWidth={10} opacity={0} />
-        <Line ref={crossX2} points={[[-160, 120], [160, -200]]} stroke={T.red} lineWidth={10} opacity={0} />
+        {/* 有意打叉：key 以 qa-ignore 开头，渲染 QA 不把它当成“线穿过文字” */}
+        <Line key={'qa-ignore-cross-1'} ref={crossX1} points={[[-160, -200], [160, 120]]} stroke={T.red} lineWidth={10} opacity={0} />
+        <Line key={'qa-ignore-cross-2'} ref={crossX2} points={[[-160, 120], [160, -200]]} stroke={T.red} lineWidth={10} opacity={0} />
       </Node>
 
       {/* b18：瓶颈清单轮流亮起 */}

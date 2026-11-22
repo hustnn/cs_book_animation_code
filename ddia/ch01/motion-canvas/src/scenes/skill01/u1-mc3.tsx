@@ -4,6 +4,7 @@
 // 消息队列（右）、应用代码（下）；变更捕获 → 失效/更新缓存、推给搜索索引；异步任务 → 消息队列 → 应用代码 → 发邮件 → 外部世界。
 // 时长全部来自 timeline/u1.json（beat() 驱动），不手写 waitFor 魔法数字。
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
+import {attach} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -112,7 +113,7 @@ export default makeScene2D(function* (view) {
         {/* 五条流向的箭头与小点（初始隐藏） */}
         <Line ref={readArrow} points={[[-140, -135], [-280, -135]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
         <Circle ref={readDot} position={[-140, -135]} width={22} height={22} fill={T.green} opacity={0} />
-        <Txt ref={hitTag} position={[-290, -190]} fontSize={SIZE.min} fill={T.green} fontFamily={FONT.sans} opacity={0} text={'命中 ✓ 直接回'} />
+        <Txt ref={hitTag} fontSize={SIZE.min} fill={T.green} fontFamily={FONT.sans} opacity={0} text={'命中 ✓ 直接回'} />
         <Line ref={writeArrow} points={[[-60, -107], [-100, -50]]} stroke={T.blue} lineWidth={3} endArrow opacity={0} />
         <Circle ref={writeDot} position={[-60, -107]} width={22} height={22} fill={T.blue} opacity={0} />
         <Line ref={captureArrow} points={[[-120, 50], [-120, 122]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
@@ -130,7 +131,7 @@ export default makeScene2D(function* (view) {
         <Line ref={queueArrow} points={[[390, 15], [390, 60]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
         <Circle ref={mailDot} position={[390, 60]} width={22} height={22} fill={T.yellow} opacity={0} />
         <Line ref={mailOut} points={[[390, 123], [390, 210]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
-        <Txt ref={mailTag} position={[480, 165]} fontSize={SIZE.min} fill={T.yellow} fontFamily={FONT.sans} opacity={0} text={'发邮件'} />
+        <Txt ref={mailTag} fontSize={SIZE.min} fill={T.yellow} fontFamily={FONT.sans} opacity={0} text={'发邮件'} />
       </Node>
 
       {/* b25b：一致结果印章（r2 #8：原 [0, -40] 340×100 盖住主数据库标签，移到右上空白处） */}
@@ -151,6 +152,11 @@ export default makeScene2D(function* (view) {
       </Node>
     </>,
   );
+
+  // QA r4（类 E）：“命中 ✓ 直接回”原在 y=-190，正压在虚线容器的上边框（-195）上；“发邮件”贴着容器右边。
+  // 改为挂在它们说明的对象旁边：命中标签在缓存框下方，发邮件标签在出站箭头右侧
+  attach(hitTag(), cache(), 'bottom', 8);
+  attach(mailTag(), mailOut(), 'right', 10);
 
   // b20：Figure 1-1——客户只看到一个 API，里面的拼法全被藏起来了
   say('API 藏起实现细节');

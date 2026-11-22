@@ -2,6 +2,7 @@
 // 分镜：skill-ch01/ch01-beats.md U9 一节；原文：DDIA §1.14–1.15（书页 p21–23，PDF p43–45）。
 // 时长全部来自 timeline/u9.json（beat() 驱动），不手写 waitFor。
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
+import {edgePointIn} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
 import {makeBeats} from '../../lib/beats';
@@ -66,6 +67,10 @@ export default makeScene2D(function* (view) {
   const nextChapter = createRef<Txt>();
 
   const say = (text: string) => anchor().text(text);
+
+  // 循环小点的停靠点：每个节点朝向圆心那条边外侧 26px（节点顺序：小步、快跑、反馈、调整）
+  const INWARD = ['bottom', 'left', 'top', 'right'] as const;
+  const cycleStop = (k: number) => edgePointIn(cycleDot(), cycleNodes[k](), INWARD[k], 26);
 
   view.add(
     <>
@@ -383,8 +388,9 @@ export default makeScene2D(function* (view) {
           <Txt position={[0, -80]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'速效解'} />
           <Txt position={[0, 0]} fontSize={SIZE.body} fill={T.red} fontFamily={FONT.sans} text={'easy fix'} />
         </Rect>
-        <Line ref={crossLines[0]} points={[[-140, -180], [140, 60]]} stroke={T.red} lineWidth={8} opacity={0} />
-        <Line ref={crossLines[1]} points={[[140, -180], [-140, 60]]} stroke={T.red} lineWidth={8} opacity={0} />
+        {/* 有意打叉：key 以 qa-ignore 开头，渲染 QA 不把它当成“线穿过文字” */}
+        <Line key={'qa-ignore-cross-0'} ref={crossLines[0]} points={[[-140, -180], [140, 60]]} stroke={T.red} lineWidth={8} opacity={0} />
+        <Line key={'qa-ignore-cross-1'} ref={crossLines[1]} points={[[140, -180], [-140, 60]]} stroke={T.red} lineWidth={8} opacity={0} />
         <Txt position={[0, 160]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'没有速效解'} />
       </Node>
 
@@ -465,17 +471,18 @@ export default makeScene2D(function* (view) {
 
   // b19：小步快跑的循环，TDD 与重构标签
   say('Agile · TDD');
+  cycleDot().position(cycleStop(0)); // 组还没显示，先把小点放到第一个停靠点
   yield* beat(
     'b19',
     all(
       g18().opacity(0, 0.5),
       g19().opacity(1, 0.5),
-      sequence(
-        2,
-        cycleDot().position([220, -60], 2),
-        cycleDot().position([0, 80], 2),
-        cycleDot().position([-220, -60], 2),
-        cycleDot().position([0, -200], 2),
+      // QA r4（类 F）：小点原在四个节点的中心之间移动，每圈都停在“小步”等字上；改停在各节点朝向圆心那条边的旁边
+      chain(
+        cycleDot().position(cycleStop(1), 2),
+        cycleDot().position(cycleStop(2), 2),
+        cycleDot().position(cycleStop(3), 2),
+        cycleDot().position(cycleStop(0), 2),
       ),
       ...[0, 1].map(i => chain(waitFor(6 + i * 1.5), agileTags[i]().opacity(1, 0.6))),
     ),

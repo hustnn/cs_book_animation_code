@@ -2,9 +2,10 @@
 // 分镜：skill-ch01/ch01-beats.md U5 一节；原文：DDIA §1.9 前半（书页 p13–14，PDF p35–36）。
 // 时长全部来自 timeline/u5.json（beat() 驱动），不手写 waitFor。
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
+import {attach} from '../../lib/layout';
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, sequence, waitFor} from '@motion-canvas/core';
-import {makeBeats} from '../../lib/beats';
+import {at, makeBeats} from '../../lib/beats';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u5.json';
 
@@ -26,6 +27,7 @@ export default makeScene2D(function* (view) {
   const g6 = createRef<Node>();
   const idealBar = createRef<Rect>();
   const actualBar = createRef<Rect>();
+  const longerTag = createRef<Txt>();
   const g7 = createRef<Node>();
   const workers = [0, 1, 2, 3].map(() => createRef<Rect>());
   const slowTag = createRef<Txt>();
@@ -37,6 +39,9 @@ export default makeScene2D(function* (view) {
   const seg1 = createRef<Rect>();
   const seg2 = createRef<Rect>();
   const seg3 = createRef<Rect>();
+  const segLab = [0, 1, 2].map(() => createRef<Txt>());
+  const totalTrack = createRef<Rect>();
+  const totalTag = createRef<Txt>();
   const latentTag = createRef<Txt>();
   const waitDot = createRef<Circle>();
 
@@ -92,15 +97,18 @@ export default makeScene2D(function* (view) {
       {/* b3/b4：左右两块面板。左：资源不变，性能跌；右：性能不变，资源涨 */}
       <Node ref={panelL} opacity={0}>
         <Txt position={[-300, -230]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'资源不变'} />
-        <Rect position={[-300, -120]} width={220} height={44} radius={8} fill={T.blue} opacity={0.9} />
-        <Txt position={[-300, -60]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'资源'} />
+        {/* QA r4（类 A）：标签原在小条下方 y=-60，正好落在下面那根会长高/缩短的柱子扫过的范围里；改放进小条自身 */}
+        <Rect position={[-300, -140]} width={220} height={44} radius={8} fill={T.blue} opacity={0.9}>
+          <Txt fontSize={SIZE.label} fontWeight={700} fill={T.bg} fontFamily={FONT.sans} text={'资源'} />
+        </Rect>
         <Rect ref={perfL} position={[-300, 80]} offset={[0, 1]} width={220} height={180} radius={8} fill={T.green} />
         <Txt position={[-300, 120]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'性能 ↓'} />
       </Node>
       <Node ref={panelR} opacity={0}>
         <Txt position={[300, -230]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'性能不变'} />
-        <Rect position={[300, -120]} width={220} height={44} radius={8} fill={T.green} opacity={0.9} />
-        <Txt position={[300, -60]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'性能'} />
+        <Rect position={[300, -140]} width={220} height={44} radius={8} fill={T.green} opacity={0.9}>
+          <Txt fontSize={SIZE.label} fontWeight={700} fill={T.bg} fontFamily={FONT.sans} text={'性能'} />
+        </Rect>
         <Rect ref={resR} position={[300, 80]} offset={[0, 1]} width={220} height={60} radius={8} fill={T.blue} />
         <Txt position={[300, 120]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'资源 ↑'} />
       </Node>
@@ -133,7 +141,7 @@ export default makeScene2D(function* (view) {
         <Rect ref={idealBar} position={[-260, -40]} offset={[-1, 0]} width={0} height={44} radius={8} fill={T.blue} />
         <Txt position={[-380, 60]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'实际'} />
         <Rect ref={actualBar} position={[-260, 60]} offset={[-1, 0]} width={0} height={44} radius={8} fill={T.red} />
-        <Txt position={[500, 60]} fontSize={SIZE.label} fill={T.white} fontFamily={FONT.sans} text={'更长'} />
+        <Txt ref={longerTag} fontSize={SIZE.label} fill={T.white} fontFamily={FONT.sans} opacity={0} text={'更长'} />
       </Node>
 
       {/* b7：四个 worker，柱子高低不均，最慢的拖尾 */}
@@ -188,17 +196,26 @@ export default makeScene2D(function* (view) {
 
       {/* b10/b11：一条时间条切成三段；b11 只高亮“等待”那段 */}
       <Node ref={timebar} opacity={0}>
+        {/* 整条响应时间的空框先出来（旁白先说“客户端看到的全部时间”），三段再按旁白依次填进去：拍首不留空画面 */}
+        <Rect ref={totalTrack} position={[0, -40]} width={900} height={70} stroke={T.line} lineWidth={2} />
+        <Txt ref={totalTag} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'客户端看到的全部时间'} />
         <Rect ref={seg1} position={[-450, -40]} offset={[-1, 0]} width={0} height={70} fill={T.blue} />
         <Rect ref={seg2} position={[0, -40]} offset={[-1, 0]} width={0} height={70} fill={T.yellow} />
         <Rect ref={seg3} position={[180, -40]} offset={[-1, 0]} width={0} height={70} fill={T.red} />
-        <Txt position={[-225, 50]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'服务时间'} />
-        <Txt position={[90, 50]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'网络延迟'} />
-        <Txt position={[315, 50]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'排队延迟'} />
+        {/* 三段的名字 attach 在各自那段的正下方，和那段一起出现（QA orphan：不先于色段出现） */}
+        <Txt ref={segLab[0]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} opacity={0} text={'服务时间'} />
+        <Txt ref={segLab[1]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} opacity={0} text={'网络延迟'} />
+        <Txt ref={segLab[2]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} opacity={0} text={'排队延迟'} />
         <Txt ref={latentTag} position={[315, -120]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} opacity={0} text={'latent · awaiting service'} />
         <Circle ref={waitDot} position={[200, -40]} width={22} height={22} fill={T.white} opacity={0} />
       </Node>
     </>,
   );
+
+  // “更长”跟着实际耗时条的右端走
+  attach(longerTag(), actualBar(), 'right', 16);
+  [seg1, seg2, seg3].forEach((s, i) => attach(segLab[i](), s(), 'bottom', 20));
+  attach(totalTag(), totalTrack(), 'top', 14);
 
   // b1：钩子——两个读数一大一小
   say('80 ms ? 1.2 s');
@@ -263,12 +280,11 @@ export default makeScene2D(function* (view) {
   say('理想时间 = 大小 / 吞吐量');
   yield* beat(
     'b6',
-    sequence(
-      0,
-      all(g5().opacity(0, 0.5), g6().opacity(1, 0.6)),
-      idealBar().width(400, 1.5),
-      all(actualBar().width(700, 2.5)),
-    ),
+    // QA r4（类 H，idle 检查发现）：原 sequence(0, …) 两根条一开场就同时长完，之后静止 6.4s；改为跟着旁白先“理想”后“实际”
+    all(g5().opacity(0, 0.5), g6().opacity(1, 0.6)),
+    at('理想', idealBar().width(400, 1.5)),
+    at('实际', actualBar().width(700, 1.8)), // “实际”在句尾，2.5s 会超过旁白（QA overrun），收到 1.8s
+    at('更长', longerTag().opacity(1, 0.4)), // QA orphan：标签不先于红条出现，念到“更长”才出
   );
 
   // b7a/b7b：r2 #14：b7 语速 8.2 字/s 且一拍两个信息点，拆成两拍——
@@ -289,13 +305,15 @@ export default makeScene2D(function* (view) {
   yield* beat('b7b', all(workers[3]().fill(T.red, 0.6), slowTag().opacity(1, 0.6)));
 
   // b8：在线服务看响应时间——请求往返一次，计时条走满整拍
+  // lint（并行补间冲突）：原 sequence(0, 去, 回) 两个 position 补间同时开始、互相覆盖，
+  // 小黄点全程停在客户端，往返没有播出来；改 chain 先去后回（4s < 9.11s）。
   say('在线服务看响应时间');
   yield* beat(
     'b8',
     all(
       g7().opacity(0, 0.5),
       g8().opacity(1, 0.6),
-      sequence(0, dot8().position([330, -60], 2), dot8().position([-360, -60], 2)),
+      chain(dot8().position([330, -60], 2), dot8().position([-360, -60], 2)),
       timer8().width(920, 6),
     ),
   );
@@ -308,13 +326,11 @@ export default makeScene2D(function* (view) {
   say('服务 + 网络 + 排队');
   yield* beat(
     'b10',
-    sequence(
-      0,
-      all(g9().opacity(0, 0.5), timebar().opacity(1, 0.5)),
-      seg1().width(450, 1.2),
-      seg2().width(180, 1.2),
-      seg3().width(270, 1.2),
-    ),
+    // QA r4（类 H）：原 sequence(0, …) 三段同时在 1.2s 内长完，之后静止近 7s；改为旁白念到哪段、哪段长出来
+    all(g9().opacity(0, 0.5), timebar().opacity(1, 0.5)),
+    at('真正处理', all(seg1().width(450, 1.2), segLab[0]().opacity(1, 0.4))),
+    at('网络延迟', all(seg2().width(180, 1.2), segLab[1]().opacity(1, 0.4))),
+    at('排队延迟', all(seg3().width(270, 1.2), segLab[2]().opacity(1, 0.4))),
   );
 
   // b11：延迟只是其中一段——“等待”那段单独高亮，等着被服务
