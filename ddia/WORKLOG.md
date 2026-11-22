@@ -220,6 +220,32 @@ ddia-animation-demo/
   SETUP.md、WORKLOG.md 第 4 节目录树与时间轴双拷贝说明、PLAN.md 与 ch01 三份文档里的裸路径引用全部更新。
   各轮次 rounds/ 快照按 skill 规则只读未动（里面的旧路径是当时如实记录）。
   2026-11-22 之前的日志条目提到旧路径的，属历史记录，不改；找文件以本节新布局为准。
-- **验证**：移动后 `npx tsc --noEmit`、lint_scenes.py、MC 小渲染探针、Manim 导入/渲染均通过（见下）。
-- **推送**：在 PR #2 的分支 `feat/ch01-skill-final-push` 上追加提交（PR #2 未合）；新路径文件用
-  push_files 快照推送，旧路径文件须逐个 delete_file 删除（连接器快照不支持删除）。
+- **验证**（移动后，本地工作区 `ddia-animation-demo/` 新布局下全部通过）：
+  `ch01/motion-canvas` 内 `npx tsc --noEmit` exit 0；skill 的 `lint_scenes.py`（`motion-canvas/src/scenes/skill01` + `--manim manim/skill01`）
+  5 项阈值全 PASS（34 场景，卡片 0%、静止 10%）；MC 小渲染探针 `s19a` 11.8s 出 8.37s 成片；
+  Manim 导入正常（0.22.1），`U6Utilization -n 0` 探针渲染通过（验证了改过的 Beats timeline 相对路径），`queueing.py -pql` 全渲染 32.2s；
+  新位置上 47 份 `review.md` + 10 份 `FINAL` 齐全。另修了一个真 bug：Manim venv 的 `bin/*` 入口脚本 shebang 曾指向旧绝对路径，
+  移动后 `manim` 报错无法执行，已用新 venv 路径 sed 替换并验证 `bin/` 无旧路径残留。已知非回归：v2 的 `manim/ch01/` lint
+  静止率仍 FAIL（availability.py 46%、7.0s 停顿），是 v2 旧风格，与移动无关。
+- **推送（原方案，旧分支，已废弃）**：先在 PR #2 的分支 `feat/ch01-skill-final-push` 上追加提交——新路径文件用
+  push_files 快照推送，commit `34cd6645`（290 个文件）；旧路径文件须逐个 delete_file 删除（连接器快照不支持删除），
+  共 286 个旧路径，已删 243 个（`ch01-script-v2.md` + 242 个），剩 43 个（rounds/u6–u9、subs、timeline 等，均不在 main 上）。
+  期间遇到两次中断：一次服务重启打断了 25 个并行删除（只 1 个生效，其余逐个核对后重删）；一次 /tmp 被清空，
+  删除清单丢失，后凭 PR #2 的 diff（get_files 全量 433 个文件）重建：旧路径在 diff 里以 added 出现即仍在分支上，
+  以 renamed 的 previous_filename 出现、或完全不出现（删掉且从未上过 main 的文件），即已删。重建时核对为已删 143 个、
+  剩余 143 个，与之前人工计数一致；之后又删 4 批共 100 个，合计 243 个，剩 43 个。并行删除偶发
+  `failed to update reference: Update is not a fast forward`，系多删并发抢分支头，重试即过；另有一次 14 个并行只生效 2 个，
+  疑似审批后端抖动，重试后全过。
+  过程文件（清单、进度、PR diff 原始页）现存 `ddia-animation-demo/.restructure/`（持久目录，不再放 /tmp）。
+- **改方案（用户 2026-11-22 决定）**：不再在旧分支上逐个删文件。改开新分支 `feat/ch01-separate-layout`（从 main 头
+  `647d6798` 建），把重构后的完整新布局一次性快照推上去，commit `db5ae935`（312 个文件、2.10 MiB，与 PR #2 文件集一致），
+  开新 PR #3（https://github.com/hustnn/cs_book_animation_code/pull/3 ，标题“Restructure: 第 1 章产物收进 ddia/ch01/，与通用 skill 分开”）。
+  PR #3 diff 核对：共 290 个文件，287 added（286 个 `ddia/ch01/` + `ddia/SETUP.md`）+ 3 modified（`PLAN.md`、`WORKLOG.md`、
+  `skills/textbook-to-animation/references/motion-canvas.md`）；`figures.md` 与其余 21 个 skill 文件与 main 完全一致，故不在 diff 里。
+- **注意（重要）**：快照推送不能删文件，所以从 main 建的新分支继承了 main 上 104 个旧路径文件
+  （`ddia/motion-canvas/`、`ddia/manim/`、`ddia/ch01-*.md`，与 `ddia/ch01/` 下内容重复；已在新分支上实测确认
+  `ddia/motion-canvas/package.json` 与 `ddia/ch01-script-v2.md` 仍在，与新路径下同名文件 blob SHA 相同）。
+  合并 PR #3 后 main 上新旧两套路径会并存；要得到干净的单一布局，还需再删 main 上那 104 个旧路径文件。
+  这一点已写进 PR #3 正文，合之前请用户确认。旧分支 `feat/ch01-skill-final-push` 的删除连接器没有对应工具
+  （无 delete_branch），需用户在 github.com 网页上删，删后 PR #2 自动关闭；PR #2 目前仍 open。
+  同步记录已更新（`cs_book_animation_code.muse-github-snapshot-sync.json`，第 5 条，新分支 db5ae935）。
