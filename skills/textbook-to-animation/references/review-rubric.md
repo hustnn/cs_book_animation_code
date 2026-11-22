@@ -38,7 +38,7 @@
 |---|---|
 | `beats.md`、`timeline.json` | 复制本轮实际使用的版本 |
 | `<unit>.mp4` | 本轮成片（拼接混音后的那份） |
-| `sheet.png` | 每拍抽一帧（取拍的中点，时间来自 timeline.json）：`ffmpeg -ss <t> -i <unit>.mp4 -frames:v 1 frames/<拍号>.png`，再拼成联系表：`ffmpeg -pattern_type glob -i 'frames/*.png' -vf "scale=426:-1,tile=6x5" -frames:v 1 sheet.png`。深色背景下 blackdetect 会误报，不能用它判断黑帧 |
+| `sheet.png` | 每拍抽一帧（取拍的中点，时间来自 timeline.json）：`ffmpeg -ss <t> -i <unit>.mp4 -frames:v 1 frames/<拍号>.png`，再拼成联系表：`ffmpeg -pattern_type glob -i 'frames/*.png' -vf "scale=426:-1,tile=6x5" -frames:v 1 sheet.png`。深色背景下 blackdetect 会误报，不能用它判断黑帧。另外为检查文字重叠，每拍再抽 4–5 帧（拍首 +0.15s、25%、50%、75%、拍末 −0.15s，动画进行中与转场帧也要抽），文字多的帧全分辨率看，Manim 段同标准；抽帧命令加 `-nostdin` |
 | `lint.txt` | `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录> > lint.txt` |
 | `review.md` | 本轮审查完成后写（模板见第 7 节） |
 
@@ -93,7 +93,8 @@
 - [ ] 每一拍画面都有变化；没有连续两拍的画面一模一样。
 - [ ] 叙事顺序：开头是钩子问题，结尾回扣；没有“收尾卡出现在中间”；没有重复的结论句。
 - [ ] 同屏文字 ≤ 3 行；没有审稿备注、页码这类观众用不上的东西。
-- [ ] 节奏：旁白语速自然（中文约每秒 4–5 字），没有画面已经切走、旁白还在讲上一件事的情况。
+- [ ] 文字没有被图形压住：每拍 4–5 帧逐帧看，标签类文字重点查；横条、柱条、线、框都不能从文字中间穿过（有意划掉/打叉除外，核实后保留）。重叠可能只在动画进行中或转场时出现一瞬间，只抽中点帧会漏掉。
+- [ ] 节奏：旁白语速自然（中文约每秒 4–5 字），没有画面已经切走、旁白还在讲上一件事的情况；每拍按字数/时长算语速，异常偏低的拍检查静音结构，确认尾句没有被重复。
 - [ ] **新手测试**：拿 design.md 的学习目标问题，让一个没读过这一章的人回答
   （或者另开一个没有上下文的 agent 会话，只给它旁白文本和联系表，不给原书），记录答错的题和原因。
 

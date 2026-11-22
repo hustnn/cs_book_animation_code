@@ -3,7 +3,7 @@ name: textbook-to-animation
 description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比）和静态 lint。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -117,6 +117,7 @@ metadata:
    每单元至少一个。模式库见 `references/pedagogy.md`。
 6. **要点 → 载体映射**：每条 P0/P1 要点落到哪一拍、由画面还是旁白承载。
 7. **叙事顺序**：默认跟原书的论证顺序；要调整就写明理由。**新增内容要编织进叙事，不要追加成补丁段。**
+8. **总—分—总**：整章开头加一段 30–60 秒的总述，先总说本章讲什么——核心思想加各单元的路线，再进入分述；末单元收束全章。不要一上来就讲第一个单元，观众不知道这章要去哪。
 
 **门槛：** 每条 P0 都有画面动作，每条 P1 都有承载的拍；单元之间没有重复的结论句。
 
@@ -154,6 +155,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 1. 把 beats.md 的旁白抽成 `beats.json`（`[{id, text}]`），用 TTS 生成每拍一个音频，放进 `audio/<unit>/<拍号>.wav`。
    TTS 引擎随环境选（云端 TTS、本地开源模型都可以），要求只有两条：全书同一个音色；输出同采样率的 PCM wav。
    第一次用某个引擎前，先合成一两拍试听：多音字、英文术语、数字（“p99”“1.2 秒”）的读法要单独检查。
+   每拍录完先验证再往下走：核对时长与静音结构。按字数/时长算语速，中文约每秒 4–5 字；语速异常偏低的拍，检查尾句是否被重复——有的 TTS 引擎会在固定位置截断、把后半句重复数次（原因见 `references/motion-canvas.md` 坑表）。有重复就把这拍拆成两拍或改写法重录，**不要原句重试**。
 2. 运行
    `python <skill>/scripts/audio_timeline.py audio/<unit> --beats beats.json -o timeline/<unit>.json --srt subs/<unit>.srt --concat-list audio/<unit>.txt`，
    得到每拍时长、字幕和音频拼接清单。
@@ -169,7 +171,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - 颜色、字体从 theme 引用；文字一律设 `maxWidth` + `textWrap`（Manim 用 `theme.py` 的 `txt()`，会自动缩到安全区内）。
 - 渲染前：MC 跑 `npx tsc --noEmit`，再跑 `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录>`。
 - 渲染：MC 在 `motion-canvas/` 下 `node scripts/render.mjs <场景名>`；Manim `manim -qm <文件> <场景类>`。
-- 渲染后：ffprobe 核对时长；每拍抽一帧拼成联系表（contact sheet），审查时用。
+- 渲染后：ffprobe 核对时长；每拍抽一帧拼成联系表（contact sheet），审查时用；另外每拍再抽 4–5 帧（拍首、25%、50%、75%、拍末，动画进行中与转场帧也要抽），文字多的帧全分辨率核对，检查文字有没有被图形压住（见 `references/review-rubric.md`）。
 
 ### 7. 审查与多轮迭代（rounds/<unit>/rN/）
 
@@ -218,6 +220,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - 不要追加补丁段：要么重写这个单元的叙事，要么把内容编织进已有的拍。
 - 不要按模板给固定时长：时长由旁白决定。
 - 不要把工作备注、页码指引放上画面。
+- 不要在旁白或画面里引用书的页码、图号、“书里/原图/原表/Part”这类说法：动画要自包含，观众没有书也能看懂。只说内容本身，例如“来看这张图”“来看这张表”。
+- 不要把内部编号（学习单元编号、内部代号）放上画面或念进旁白：观众不知道那是什么意思。标题只用中文标题。
 - 不要把原书没有的数字或公式当作书的内容；示意模型也不要用错数学术语（例如说 1/(1−ρ) 有“拐点”）。
 - 不要在一张图里混用两种坐标语义；要变换，就用动画把变换演出来。
 - 不要只照着清单或分镜生成，也不要只拿清单审查：生成和审查都要回到原文。
