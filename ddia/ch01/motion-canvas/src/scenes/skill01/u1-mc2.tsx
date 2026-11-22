@@ -301,7 +301,8 @@ export default makeScene2D(function* (view) {
 
   // b16b1：再比如 Kafka，本来是消息队列——标签落在队列框里
   say('Kafka 本来是队列');
-  yield* beat('b16b1', all(kafkaTag().opacity(1, 0.6), kafkaTag().position([280, 60], 2.5)));
+  // QA r4（类 D）：Redis 胶囊上一拍滑到 (280, 40) 后一直留着，Kafka 落在同一位置，下面露出一圈重影；先让 Redis 退场
+  yield* beat('b16b1', all(redisTag().opacity(0, 0.5), kafkaTag().opacity(1, 0.6), kafkaTag().position([280, 60], 2.5)));
 
   // b16b2：却有数据库一样的持久保证——持久保证徽章亮起
   say('却有持久保证');

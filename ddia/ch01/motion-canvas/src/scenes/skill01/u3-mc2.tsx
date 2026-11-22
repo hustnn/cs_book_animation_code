@@ -208,7 +208,8 @@ export default makeScene2D(function* (view) {
         {['假设：磁盘不会同时坏', '假设：时钟永远准', '假设：网络不会丢包'].map((t, i) => (
           <Txt key={`u3-asm-${i}`} position={[0, -160 + i * 90]} fontSize={SIZE.body} fill={T.text} fontFamily={FONT.sans} text={t} />
         ))}
-        <Rect ref={strike} position={[0, 20]} width={0} height={8} fill={T.red} />
+        {/* 有意划掉：key 以 qa-ignore 开头，渲染 QA 不把它当成“图形压字” */}
+        <Rect key={'qa-ignore-strike'} ref={strike} position={[0, 20]} width={0} height={8} fill={T.red} />
         <Txt ref={alarm} position={[0, 160]} fontSize={SIZE.label} fontWeight={700} fill={T.red} fontFamily={FONT.sans} opacity={0} text={'假设不对了，系统报警'} />
       </Node>
 

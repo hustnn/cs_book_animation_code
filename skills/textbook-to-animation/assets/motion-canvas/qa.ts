@@ -15,9 +15,12 @@
 //   text-overlap  error  两段文字互相重叠 ≥ 15%（较小那段的面积）
 //   offscreen     error  文字超出画面
 //   overrun       error  这一拍的动画比旁白长，被顺延了
+//   idle          error  动画做完后这一拍还要静止 ≥ 6s（3–6s 为 warn）：旁白在讲、画面不动
+//   orphan        error  用 attach() 挂上的标签已经看得清，它说明的对象却还没出现（透明、宽或高不到 1px）或已退场
 // 降为 warn 的情况（仍会列出，供对照联系表扫一眼）：
 //   - 转场叠化：文字或图形的不透明度 < 0.6；
 //   - 半透明高亮：画在文字之上的填充，实际不透明度（节点 × 颜色 alpha）< 0.5，文字仍看得清；
+//   - 遮罩层：用画面背景色填充、或盖住半个画面以上的图形（雾、暗场、擦除）——本来就是要挡住下面的内容；
 //   - 瞬时：同一对元素只在一个采样点重叠（元素正在飞入、散开、穿过），持续到第二个采样点才算 error。
 //     判断“同一对”按节点身份，不按坐标，所以正在变长的柱子压字也会被认作持续的同一个问题。
 // 有意的划掉、打叉、遮罩：给那个节点设 key="qa-ignore-<说明>"，它和它的子节点都不参与检查。
@@ -25,7 +28,7 @@
 import {Circle, Curve, Node, Polygon, Rect, Shape, Txt, useScene2D} from '@motion-canvas/2d';
 import {BBox, ThreadGenerator, Vector2, useScene, useTime, waitFor} from '@motion-canvas/core';
 
-export type QaKind = 'covered' | 'crossed' | 'text-overlap' | 'offscreen' | 'edge' | 'overrun';
+export type QaKind = 'covered' | 'crossed' | 'text-overlap' | 'offscreen' | 'edge' | 'overrun' | 'idle' | 'orphan';
 
 export interface QaFinding {
   scene: string;
@@ -43,8 +46,35 @@ export interface QaFinding {
 
 const g = globalThis as any;
 
-/** 不透明度低于这个值视为“正在淡入淡出”：转场叠化中的重叠只记 warn。 */
-const SOLID = 0.6;
+/**
+ * 判定阈值。每一项都对应一条与具体教材无关的视觉规则（理由见 references/qa-rules.md）；
+ * 要调整时先在 qa-fixtures 里加一个能复现问题的用例，改完跑 scripts/qa_selftest.py 全部通过再用。
+ * 工程里也可以在 project.ts 里设 globalThis.__MC_QA_CONFIG__ = {...} 临时覆盖。
+ */
+export const QA_CONFIG = {
+  /** 不透明度低于它视为正在淡入淡出（转场叠化），此时的重叠只记 warn */
+  solid: 0.6,
+  /** 压在文字上的填充实际不透明度（节点 × 颜色 alpha）低于它视为半透明高亮，文字仍可读，记 warn */
+  translucent: 0.5,
+  /** 图形盖住文字框的比例低于它忽略（抗锯齿、描边外扩带来的贴边） */
+  coverMin: 0.02,
+  /** 文字框落在图形里的比例在 [edgeMin, insideMax) 之间算“骑在边上” */
+  edgeMin: 0.1,
+  insideMax: 0.9,
+  /** 两段文字的重叠面积占较小那段的比例，超过算互叠 */
+  overlapMin: 0.15,
+  /** 填充色等于画面背景色、或面积超过画面这个比例的图形，视为遮罩层（有意遮挡），记 warn */
+  maskArea: 0.5,
+  /** 同一对元素至少在这么多个采样点出现才算 error；更少视为瞬时（飞过、散开） */
+  minSamples: 2,
+  /** 动画做完后到这一拍结束的静止时长：≥ idleWarn 记 warn，≥ idleError 记 error */
+  idleWarn: 3,
+  idleError: 6,
+  /** attach() 的对象宽或高小于它（像素）视为还没出现：标签不该先于对象出现 */
+  subjectMin: 1,
+};
+
+const cfg = () => ({...QA_CONFIG, ...(g.__MC_QA_CONFIG__ ?? {})});
 
 export function qaEnabled(): boolean {
   return !!g.__MC_QA__;
@@ -75,13 +105,31 @@ function report(f: Omit<QaFinding, 'times'>, t: number) {
 g.__qaFinalize = (): QaFinding[] => {
   const list: QaFinding[] = g.__qaReport ?? [];
   for (const f of list) {
-    if (f.kind !== 'overrun' && f.severity === 'error' && f.times.length < 2) {
+    if (f.kind !== 'overrun' && f.kind !== 'idle' && f.severity === 'error' && f.times.length < cfg().minSamples) {
       f.severity = 'warn';
       f.note = '瞬时：只在一个采样点出现';
     }
   }
   return list;
 };
+
+/** 动画做完后，这一拍还要静止 idle 秒（旁白还在讲、画面不动）。 */
+export function qaReportIdle(beat: string, idle: number, dur: number) {
+  if (!qaEnabled()) return;
+  const c = cfg();
+  if (idle < c.idleWarn) return;
+  report(
+    {
+      scene: useScene().name,
+      beat,
+      kind: 'idle',
+      severity: idle >= c.idleError ? 'error' : 'warn',
+      text: `动画做完后静止 ${idle.toFixed(1)}s（这一拍 ${dur.toFixed(1)}s）`,
+      note: '把动作跟着旁白分步展开（at(phrase, …)），或加一段持续的慢动作',
+    },
+    useTime(),
+  );
+}
 
 export function qaReportOverrun(beat: string, spent: number, dur: number) {
   if (!qaEnabled()) return;
@@ -298,9 +346,14 @@ export function qaCheck(beat: string) {
   const t = useTime();
   // 世界坐标的原点在画面左上角，画面范围就是 view 自身的世界包围盒
   const frame: Box = shrink(worldBox(view), -2);
+  const c = cfg();
+  const bg = view.fill();
+  const frameArea = area(frame);
+  const sameColor = (a: any, b: any) =>
+    !!a && !!b && typeof a.hex === 'function' && typeof b.hex === 'function' && a.hex().slice(0, 7) === b.hex().slice(0, 7);
 
   const texts: (Item & {quad: Vector2[]})[] = [];
-  const shapes: (Item & {fillAlpha: number; poly: P[]; toLocal: DOMMatrix})[] = [];
+  const shapes: (Item & {fillAlpha: number; poly: P[]; toLocal: DOMMatrix; mask: boolean})[] = [];
   const curves: (Item & {pts: Vector2[]})[] = [];
   let order = 0;
 
@@ -334,6 +387,8 @@ export function qaCheck(beat: string) {
           fillAlpha,
           poly: outline(n, localBox(n)),
           toLocal: n.worldToLocal(),
+          // 遮罩层：用背景色填充（“擦掉”下面的内容），或大到盖住半个画面以上——都是有意遮挡
+          mask: fillAlpha > 0 && (sameColor(n.fill(), bg) || area(worldBox(n)) >= c.maskArea * frameArea),
         });
       }
     }
@@ -352,6 +407,16 @@ export function qaCheck(beat: string) {
       report({scene, beat, kind: 'offscreen', severity: 'error', text: label}, t);
     }
 
+    // attach() 记下了标签说明的对象：标签已经看得清，对象却还没出现（透明、宽或高≈0）或已经退场
+    const subject: Node | undefined = (tx.node as any).__qaSubject;
+    if (subject && tx.opacity >= c.solid) {
+      const sb = worldBox(subject);
+      if (subject.absoluteOpacity() < 0.05 || Math.min(sb.x1 - sb.x0, sb.y1 - sb.y0) < c.subjectMin) {
+        const note = '标签和它说明的对象一起出现、一起退场';
+        report({scene, beat, kind: 'orphan', severity: 'error', text: label, other: describe(subject, sb), otherId: subject.key, note}, t);
+      }
+    }
+
     // 画在文字下面、完整托住文字的不透明底板里最靠上的那个：比它更早画的线被底板挡住，不算穿过文字
     let backing = -1;
     for (const s of shapes) {
@@ -363,32 +428,38 @@ export function qaCheck(beat: string) {
       const inside = ratio >= 0.98;
       if (inside && s.order < tx.order && s.opacity * s.fillAlpha >= 0.9) backing = Math.max(backing, s.order);
       if (isAncestor(s.node, tx.node)) continue; // 文字在自己的卡片里
-      if (ratio < 0.02) continue;
+      if (ratio < c.coverMin) continue;
       const other = describe(s.node, s.box);
-      const fading = Math.min(tx.opacity, s.opacity) < SOLID;
+      const fading = Math.min(tx.opacity, s.opacity) < c.solid;
       if (s.order > tx.order && s.fillAlpha > 0) {
         // 有填充的图形画在文字上面
-        const translucent = s.opacity * s.fillAlpha < 0.5;
-        const severity = fading || translucent ? 'warn' : 'error';
-        const note = translucent ? '半透明高亮，文字仍可读' : fading ? '转场叠化' : undefined;
+        const translucent = s.opacity * s.fillAlpha < c.translucent;
+        const severity = fading || translucent || s.mask ? 'warn' : 'error';
+        const note = s.mask
+          ? '遮罩层（背景色或大面积），有意遮挡'
+          : translucent
+            ? '半透明高亮，文字仍可读'
+            : fading
+              ? '转场叠化'
+              : undefined;
         report({scene, beat, kind: 'covered', severity, text: label, other, otherId: s.node.key, ratio: +ratio.toFixed(2), note}, t);
-      } else if (ratio < 0.9) {
+      } else if (ratio < c.insideMax && !s.mask) {
         // 文字骑在图形边上：下层图形的边被文字压着，或上层描边框从文字中间穿过。
         // ≥ 90% 在图形里算“在里面”：文字框是矩形，放进圆里时四个角总会探出一点，不算骑边
-        const severity = ratio >= 0.1 && !fading ? 'error' : 'warn';
+        const severity = ratio >= c.edgeMin && !fading ? 'error' : 'warn';
         report({scene, beat, kind: 'edge', severity, text: label, other, otherId: s.node.key, ratio: +ratio.toFixed(2)}, t);
       }
     }
 
     const inner = shrink(tb, 3);
-    for (const c of curves) {
-      if (isAncestor(c.node, tx.node)) continue;
-      if (c.order < backing) continue; // 线在不透明底板下面，看不见
+    for (const ln of curves) {
+      if (isAncestor(ln.node, tx.node)) continue;
+      if (ln.order < backing) continue; // 线在不透明底板下面，看不见
       let hit = false;
-      for (let i = 1; i < c.pts.length && !hit; i++) hit = segmentHitsBox(c.pts[i - 1], c.pts[i], inner);
+      for (let i = 1; i < ln.pts.length && !hit; i++) hit = segmentHitsBox(ln.pts[i - 1], ln.pts[i], inner);
       if (hit) {
-        const severity = Math.min(tx.opacity, c.opacity) < SOLID ? 'warn' : 'error';
-        report({scene, beat, kind: 'crossed', severity, text: label, other: describe(c.node, c.box), otherId: c.node.key}, t);
+        const severity = Math.min(tx.opacity, ln.opacity) < c.solid ? 'warn' : 'error';
+        report({scene, beat, kind: 'crossed', severity, text: label, other: describe(ln.node, ln.box), otherId: ln.node.key}, t);
       }
     }
   }
@@ -400,8 +471,8 @@ export function qaCheck(beat: string) {
       if (isAncestor(a.node, b.node) || isAncestor(b.node, a.node)) continue;
       const ia = area(inter(a.box, b.box));
       const smaller = Math.min(area(a.box), area(b.box));
-      if (smaller <= 0 || ia / smaller < 0.15) continue;
-      const fading = Math.min(a.opacity, b.opacity) < SOLID;
+      if (smaller <= 0 || ia / smaller < c.overlapMin) continue;
+      const fading = Math.min(a.opacity, b.opacity) < c.solid;
       report(
         {
           scene,

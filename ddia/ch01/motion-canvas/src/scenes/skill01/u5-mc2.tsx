@@ -4,7 +4,7 @@
 // 颜色、字号、安全区一律取自 lib/theme，不手写十六进制色值。
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef, waitFor} from '@motion-canvas/core';
-import {makeBeats} from '../../lib/beats';
+import {at, makeBeats} from '../../lib/beats';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u5.json';
 
@@ -282,17 +282,16 @@ export default makeScene2D(function* (view) {
 
   // b32：百分位写进 SLO 和 SLA——两条规则依次出现，再亮出小柱状图上的两条阈值线
   // r3 #2-10：两根示意柱在图表淡入后长到各自阈值线下即停（中位数 20 < 绿线、p99 70 < 红线）
+  // QA idle：原来规则、柱子、“才算可用”在拍首 1.6s 内一起出现，之后静止 8s（9.6s 一拍）；
+  // 现在跟着旁白分步：念到 SLO 时出图表，念到“中位数”出第一条规则并长中位数柱，念到 p99 出第二条，最后“才算可用”。
   say('p99 < 1s 才算可用');
   yield* beat(
     'b32',
-    all(
-      all(g31().opacity(0, 0.5), g32().opacity(1, 0.6)),
-      rule1().opacity(1, 0.6),
-      rule2().opacity(1, 0.6),
-      miniChart().opacity(1, 0.6),
-      chain(waitFor(0.6), all(barMedian().height(20, 0.8), barP99().height(70, 1.0))),
-      ok32().opacity(1, 0.6),
-    ),
+    all(g31().opacity(0, 0.5), g32().opacity(1, 0.6)),
+    at('SLO', miniChart().opacity(1, 0.8)),
+    at('中位数', all(rule1().opacity(1, 0.6), barMedian().height(20, 1.0))),
+    at('p99', all(rule2().opacity(1, 0.6), barP99().height(70, 1.2))),
+    at('才算可用', ok32().opacity(1, 0.6)),
   );
 
   // b33：否则就等同于宕机——柱子越线，盖红章

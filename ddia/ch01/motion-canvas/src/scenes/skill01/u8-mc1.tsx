@@ -207,8 +207,9 @@ export default makeScene2D(function* (view) {
         {/* b9：没有容易的解法——遮罩 + 药瓶打叉（遮罩只盖内容区，不盖底部旁白字幕行） */}
         <Rect ref={overlay9} position={[0, -20]} width={1160} height={560} fill={T.bg} opacity={0} />
         <Node ref={pill9} position={[0, -40]} opacity={0}>
-          <Rect width={200} height={260} radius={20} fill={T.card} stroke={T.red} lineWidth={3} />
-          <Rect position={[0, -150]} width={90} height={40} radius={8} fill={T.red} />
+          {/* QA r4（类 A）：卡片原高 260，下移到 y=-20 后下边压住中间柱子的标签“简单性 simplicity”；改高 220 */}
+          <Rect width={200} height={220} radius={20} fill={T.card} stroke={T.red} lineWidth={3} />
+          <Rect position={[0, -130]} width={90} height={40} radius={8} fill={T.red} />
           <Txt position={[0, -60]} fontSize={SIZE.body} fill={T.text} fontFamily={FONT.sans} text={'容易的解法'} />
           <Txt position={[0, 40]} fontSize={64} fontWeight={700} fill={T.red} fontFamily={FONT.sans} text={'✗'} />
         </Node>
