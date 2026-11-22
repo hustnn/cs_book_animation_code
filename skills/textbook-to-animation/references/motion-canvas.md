@@ -125,5 +125,9 @@ ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map
 | 标签和画面讲的不是一回事 | 语义审；标签文字从 beats.md 的“屏幕文字”列复制，不要凭记忆写 |
 | `npx vite` 偶发 EPERM | `render.mjs` 已优先直接运行本地 `node_modules/vite/bin/vite.js` |
 | 路径里有空格时 `new URL(...).pathname` 变成 `%20` | 用 `fileURLToPath`（`render.mjs` 已处理） |
-| `sequence(delay, …)` 只错开起跑时间、不等前一任务完成；`sequence(0, …)` 等于所有步骤 t=0 并行开始，同属性补间会冲突、动作根本不播（U1 曾有 11 处中招，U3/U5/U6 也遇到过） | 分阶段动作要真串行用 `chain(…)`；`sequence` 的总时长 = 任务数 × delay |
+| `sequence(delay, …)` 只错开起跑时间、不等前一任务完成；`sequence(0, …)` 等于所有步骤 t=0 并行开始，同属性补间会冲突、动作根本不播（曾有一章里 11 处分阶段动作因此根本没播出来） | 分阶段动作要真串行用 `chain(…)`；`sequence` 的总时长 = 任务数 × delay |
 | `ffmpeg` 抽帧循环不加 `-nostdin` 会吞 stdin，导致文件名截断、联系表错乱 | 抽帧命令一律加 `-nostdin` |
+| 时间轴有两份拷贝：`timeline/<unit>.json`（章节目录里那份）与 Motion Canvas 场景 import 的 `motion-canvas/src/timeline/<unit>.json` 是独立的；重算时间轴后不把新文件同步到 `src/timeline/`，渲染会静默用旧时长 | 时间轴重算后立即同步两份拷贝，并核对渲染时长与新时间轴一致 |
+| 渲染批处理脚本的锁检查会把调用方同一行命令里的 `manim -qm` 误判为活进程（LOCK-BUSY） | Motion Canvas 渲染与 Manim 渲染分两次调用，不要写在同一行命令里 |
+| `audio_timeline.py` 按文件名 stem 建键，同一拍同时有 `.mp3` 与 `.wav` 时会撞键，丢掉垫音（曾有一拍因此丢了 8 秒多的垫音） | 重算时间轴前先清掉多余的 `.mp3`，只留 `.wav` |
+| TTS 文本触发型缺陷：某句旁白在固定位置截断、后半句重复（如旁白「第六，运行时自检」在固定位置截断后重复数次）；同句重录、换写法仍在同一点截断 | 不要原句重试；把这拍拆成两拍或改写法，录完先核对时长与静音结构再进渲染 |
