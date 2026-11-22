@@ -24,13 +24,44 @@ skill 是通用工具，第 1 章动画代码是用 skill 生成出来的产物�
 - Manim CE 0.22.1（见 `ch01/manim/requirements.txt`；本机无 LaTeX，公式用 Pango
   `Text` + Unicode 写法，中文用 Noto Serif CJK SC）
 - 旁白配音：`/opt/hatch/bin/tts`，音色 Helio（`avocado_v2:MAI_03`），中文；
-  mp3 转 24kHz 单声道 PCM wav 后由 `scripts/audio_timeline.py` 生成时间轴
+  mp3 转 24kHz 单声道 PCM wav 后由 `scripts/audio_timeline.py` 生成时间轴。
+  具体调用与验证见下文“配音”一节
+
+## 视觉规范（全章统一）
+
+- 画布 1280×720，30fps；成片 h264 + AAC（24kHz 单声道）+ mov_text 软字幕
+- 深色底 `#0F172A`；蓝 `#38BDF8` / 绿 `#34D399` / 红 `#F87171` / 黄 `#FBBF24` / 紫
+  `#A78BFA`，颜色语义全章一致（红 = 坏 / 慢，绿 = 好 / 已同步……）
+- 字体：中文 Noto Sans CJK SC（正文）/ Noto Serif CJK SC（衬线、Manim 公式中文），
+  等宽 JetBrains Mono + Noto Sans Mono CJK SC。颜色、字体一律从 theme 引用
+  （`motion-canvas/src/lib/theme.ts`、`manim/theme.py`），不要在场景里手写
+- 屏幕文字只做锚点（术语、关键数字、一句结论，同屏 ≤ 3 行），不要代替旁白
+
+## 配音
+
+- 工具 `/opt/hatch/bin/tts`，音色 Helio（`avocado_v2:MAI_03`），中文。标准调用
+  （每拍一个文件）：
+
+```bash
+/opt/hatch/bin/tts speak --text "<旁白>" --voice avocado_v2:MAI_03 --language zh --format mp3 --output audio/<unit>/<拍号>.mp3
+```
+
+- 转格式：`ffmpeg -i <拍号>.mp3 -ar 24000 -ac 1 -c:a pcm_s16le <拍号>.wav`
+  （24kHz 单声道 PCM wav，全章统一），再由 `scripts/audio_timeline.py` 生成
+  时间轴与字幕
+- 语速默认 100；`--speed` 非线性，同一句在 100 / 115 / 130 下时长差很大，
+  150 会截断个别句子——只在 65–130 之间调，不要用 150
+- 每拍录完先验证再往下走：核对时长与静音结构（详见 skill SKILL.md 第 5 节）。
+  坏音频不要原句重试：后端缓存会返回同一个坏文件；拆拍或改写法重录，
+  原文件存 `audio/<unit>/_orig/`。冒号、逗号后长停顿是分段触发点，拆句去标点可解
+- 细节与坑见 skill `references/motion-canvas.md` 坑表（TTS 文本触发型缺陷）
 
 ## 安装
 
 ```bash
 cd ch01/motion-canvas && npm ci        # 装 Motion Canvas 及渲染驱动
 cd ../manim && python -m venv .venv && .venv/bin/pip install -r requirements.txt
+# 注意：移动工程目录后需重建 venv——venv 的 bin/* shebang 写的是旧绝对路径
 ```
 
 ## 渲染
@@ -41,11 +72,34 @@ cd ch01/motion-canvas && node scripts/render.mjs <场景名>
 
 # Manim 单场景（-qm：720p 中等质量；不要和 Motion Canvas 写在同一行命令里，
 # 否则渲染批处理脚本的锁检查会把 manim 进程误判为活进程）
-cd ch01/manim && .venv/bin/manim -qm -p skill01/u5-distribution.py U5Distribution
+cd ch01/manim && .venv/bin/manim -qm -p <文件>.py <场景类>
 
-# 单元拼片与整章拼片见 ch01/skill-ch01/assemble-ch01-r3.py；时间轴重算后必须同步两份
-# 拷贝：ch01/skill-ch01/timeline/<unit>.json 与 ch01/motion-canvas/src/timeline/<unit>.json
+# 单元拼片与整章拼片见各章 skill 过程目录下的 assemble 脚本；时间轴重算后必须同步两份
+# 拷贝：<章>/skill-*/timeline/<unit>.json 与 <章>/motion-canvas/src/timeline/<unit>.json
+# （以下命令以 ch01 为例，新章节把 ch01 换成对应章节目录）
 ```
+
+## 环境稳定性（本沙箱偶发故障，渲染前必读）
+
+- 症状：Chrome 启动报 EPERM 后被 SIGTRAP 处死（exit 133）、ffmpeg 写文件 EPERM；
+  失败的写操作会把目标文件截断成 0 字节
+- 渲染前连续两次探针通过才开工（写文件 + ffmpeg + Chrome 启动 + 一个小场景渲染）；
+  中途一旦出现 EPERM 或 exit 133 立即停手，不要继续渲染。一次探针通过不代表
+  接下来稳定，故障会间歇复发
+- 内存紧张时不要并行跑两个重渲染；渲染用锁串行。锁目录的 owner.txt 写渲染进程
+  pid，只有锁的创建者写 owner.txt；判断死锁要确认 render.mjs、vite、Chrome
+  与 Manim/python 进程全都不在
+
+## 新章节（照这个结构建，不要另起一套）
+
+- 新章目录照 `ddia/ch01/` 的结构建：`ddia/ch<NN>/` 下放 `motion-canvas/`（工程）、
+  `manim/`（工程）、过程目录（inventory、design、beats、timeline、subs、rounds/）、
+  章文档。文件名沿用同一套约定（`beats-<单元>.json`、`timeline/<单元>.json`、
+  `subs/<单元>.srt`、`rounds/<单元>/rN/` + `FINAL`）
+- 流程照 skill 走（SKILL.md 第 1–7 步）：先做一个单元样片跑完全部审查、定型后再
+  铺开；成片只留最新版进仓库，视频/音频不进仓库
+- 全书级文档（PLAN.md、figures.md、WORKLOG.md、SETUP.md）留在 `ddia/` 根目录，
+  不要挪进章节目录
 
 ## 仓库内容（只推文本，视频/音频不在仓库里）
 
