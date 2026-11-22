@@ -3,7 +3,7 @@ name: textbook-to-animation
 description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -176,15 +176,19 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - **写每个场景前，再对照一遍这些拍对应的原文段落和图。** 标签、数字、图表的坐标和读法以原文为准，
   不凭分镜里的转述；分镜和原文对不上时，以原文为准，并回头改分镜。
 - 颜色、字体从 theme 引用；文字一律设 `maxWidth` + `textWrap`（Manim 用 `theme.py` 的 `txt()`，会自动缩到安全区内）。
-- **自检循环**（详见 `references/qa-rules.md` 第 4、5 节）：tsc → lint → `render.mjs --qa` → `sample_frames.py`，每条 error 要么修掉、要么确认是有意效果并设 `qa-ignore`，修完重跑；**自检全部通过才进入第 7 步的人工审查**。不要用调大阈值的办法让报告变干净。
+- **自检循环**（详见 `references/qa-rules.md` 第 4、5 节）：tsc → lint → `qa_chapter.py`（整章渲染 QA 并汇总）→ `sample_frames.py`，每条 error 要么修掉、要么确认是有意效果并设 `qa-ignore`，修完重跑；**自检全部通过才进入第 7 步的人工审查**。不要用调大阈值的办法让报告变干净。
 - 渲染前：MC 跑 `npx tsc --noEmit`，再跑
   `python <skill>/scripts/lint_scenes.py <场景目录> --manim <manim 目录> --timeline-dir <chapter>/timeline --narration <chapter>`。
   除了文字卡、静止、超宽这些门槛，它还会拦下三类渲染后很难看出来的问题：**并行补间冲突**（同一属性在一组
   `all(…)` / `sequence(0, …)` 里被补间两次，“先去再回”“先红后绿”这类动作根本播不出来，定格帧却看着正常）、
   画面和旁白里的**书页、图号、“书里/原图”、内部编号**、**两份时间轴不一致**。
-- 渲染：MC 在 `motion-canvas/` 下 `node scripts/render.mjs <场景名> --qa`；Manim `manim -qm <文件> <场景类>`。
+- 渲染：MC 用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`，一条命令把这一章的场景逐个用 `--qa` 渲染并汇总；
+  默认只重渲改过的场景（场景文件或它 import 的 lib、组件、时间轴内容变了才重渲），修完再跑一遍很快。
+  单个场景也可以在 `motion-canvas/` 下 `node scripts/render.mjs <场景名> --qa`。Manim `manim -qm <文件> <场景类>`。
   `--qa` 的画面和时长与正常渲染完全一致，同时在每拍 5 个时刻（拍首、25%、50%、75%、拍末）检查文字被图形压住、
-  被线穿过、骑在图形边上、文字互叠、出画，以及动画超过旁白，报告写到 `output/<场景名>.qa.json`。
+  被线穿过、骑在图形边上、文字互叠、出画、标签先于对象出现，以及动画超过旁白、做完后静止过久，
+  每个场景的报告写到 `output/<场景名>.qa.json`；汇总写到 `output/qa-summary.md`：门槛结论、每个场景一行、
+  要修的 error 清单、静止 3–6s 的拍、没被 QA 覆盖的场景。
   每条 error 要么修掉，要么确认是有意的（划掉、打叉、遮罩）并给那个节点设 `key="qa-ignore-<说明>"`；
   转场叠化中的重叠只记 warn。
 - 渲染后：`python <skill>/scripts/sample_frames.py <成片或场景视频> --timeline timeline/<unit>.json [--scene <场景>.tsx] -o <输出目录>`：
@@ -210,7 +214,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 
 **每一轮怎么走：**
 
-1. 建快照目录 `rounds/<unit>/rN/`，放入本轮的 beats.md、timeline.json、成片、`sample_frames.py` 的联系表与定格表、lint 输出和 `--qa` 报告。
+1. 建快照目录 `rounds/<unit>/rN/`，放入本轮的 beats.md、timeline.json、成片、`sample_frames.py` 的联系表与定格表、lint 输出和 QA 汇总（`qa_chapter.py … --md rounds/<unit>/rN/qa.md`）。
 2. 做四道审查，写 `review.md`。从 r2 起，开头先写**与上一轮的对比**：改了什么；上一轮的问题哪些修掉了、哪些还在；有没有新冒出来的问题。
    修改不能引入新问题，所以上一轮已经通过的检查项也要重跑。
 3. 还有 P0 或 P1：修改 inventory、分镜、代码，生成 r(N+1)，回到第 1 步。
@@ -232,8 +236,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | 并行补间同属性冲突 | 0 | lint |
 | 画面和旁白里的书页、图号、“书里/原图”、内部编号 | 0 | lint |
 | 两份时间轴拷贝 | 一致 | lint `--timeline-dir` |
-| 文字被压、被线穿过、骑在图形边上、互叠、出画；标签先于对象出现；动画超过旁白 | 0 个 error | `render.mjs --qa` |
-| 动画做完后一拍里的静止时长（idle） | < 6s（3–6s 为 warn，要说得出理由） | `render.mjs --qa` |
+| 文字被压、被线穿过、骑在图形边上、互叠、出画；标签先于对象出现；动画超过旁白 | 0 个 error | `qa_chapter.py`（逐场景 `render.mjs --qa`） |
+| 动画做完后一拍里的静止时长（idle） | < 6s（3–6s 为 warn，要说得出理由） | `qa_chapter.py` |
 | 每拍最长定格（画面整体实测） | < 6s（≥ 3s 要说明理由；对小物体的慢移动不敏感，以 idle 为准） | `sample_frames.py` |
 | 配音疑似重复/多读 | 0 | `audio_timeline.py` |
 | P0 要点 | 100% 有画面动作 |
@@ -270,5 +274,6 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | `scripts/lint_scenes.py` | 渲染前的静态检查：门槛、并行补间冲突、书页/图号/内部编号、时间轴副本 |
 | `scripts/audio_timeline.py` | 音频 → timeline.json（可同时写多份）+ SRT + 拼接清单 + 配音检查 |
 | `scripts/sample_frames.py` | 渲染后：按拍抽帧、联系表、每拍最长定格 |
+| `scripts/qa_chapter.py` | 第 6 步：整章渲染 QA 一条命令跑完并汇总（门槛结论、error 清单、静止 3–6s 的拍、未覆盖场景）；默认只重渲改过的场景 |
 | `scripts/qa_selftest.py` | 自检规则的通用测试：改规则后、新环境搭好后跑，全部通过才算规则可用 |
 | `assets/` | theme、beat（含 `at()` 旁白对齐）、layout（防压字摆位）、渲染 QA、文字卡、无头渲染管线、`qa-fixtures/` 测试用例 |

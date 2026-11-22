@@ -12,8 +12,9 @@
   1. lint：对 assets/motion-canvas/qa-fixtures/lint-fixture.tsx 跑 lint_scenes.py，
      核对并行补间冲突、观众可见文字的命中，以及不该命中的写法（p99、拍号、key）确实没被报。
   2. 渲染 QA：把 qa-fixture.tsx 和它的时间轴临时放进工程（src/scenes/qa-fixtures/、src/timeline/），
-     在 src/project.ts 里临时登记这个场景，`node scripts/render.mjs qa-fixture --qa` 渲染，
+     在 src/project.ts 里临时登记这个场景，用 qa_chapter.py（内部调 render.mjs --qa）渲染，
      逐拍对照 expect.json。无论成败，结束时都恢复 project.ts、删掉临时放进去的文件（--keep 可保留）。
+  3. 汇总：核对 qa_chapter.py 的汇总——门槛判为未通过、列出的 error 拍与 expect.json 一致、idle / overrun 带秒数。
   工程里的 lib/qa.ts、beats.ts、layout.ts 与 skill 里的不一致时会先提示：自检测的是工程里的那一份。
 有不符合预期的用例时退出码为 1。
 """
@@ -63,6 +64,20 @@ def verdict(expect, findings):
     return not errors and any(f["kind"] == kind and f["severity"] == "warn" for f in findings)
 
 
+def check_summary(summary: dict):
+    expect = json.loads((FIX / "expect.json").read_text(encoding="utf-8"))
+    want = {b for b, v in expect.items() if not b.startswith("_") and v.startswith("error:")}
+    got = {f["beat"] for f in summary["errors"]}
+    secs = {f["beat"]: f.get("seconds") for f in summary["errors"] if f["kind"] in ("idle", "overrun")}
+    return [
+        ("汇总 qa_chapter：有 error 时门槛判为未通过", summary["gate"] is False, f"gate={summary['gate']}"),
+        ("汇总 qa_chapter：列出的 error 拍与 expect.json 一致", got == want,
+         f"多 {sorted(got - want)}，少 {sorted(want - got)}"),
+        ("汇总 qa_chapter：idle / overrun 带秒数", (secs.get("f20") or 0) >= 6 and (secs.get("f19") or 0) > 0,
+         f"实际 {secs}"),
+    ]
+
+
 def check_qa(project: Path, port: str, keep: bool):
     rows = []
     lib = project / "src" / "lib"
@@ -87,18 +102,24 @@ def check_qa(project: Path, port: str, keep: bool):
         shutil.copy(FIX / "qa-fixture.tsx", scene_dst)
         shutil.copy(FIX / "qa-fixture.json", tl_dst)
         proj.write_text(patched, encoding="utf-8")
-        run = subprocess.run(["node", "scripts/render.mjs", "qa-fixture", "--qa", "--port", port],
-                             cwd=project, capture_output=True, text=True, timeout=900, stdin=subprocess.DEVNULL)
-        report_path = project / "output" / "qa-fixture.qa.json"
-        if run.returncode not in (0, 2) or not report_path.exists():
-            print(run.stdout[-3000:], run.stderr[-2000:])
-            return rows + [("渲染测试场景", False, f"render.mjs 退出码 {run.returncode}")]
-        report = json.loads(report_path.read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as tmp:
+            summary_path = Path(tmp) / "summary.json"
+            run = subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "qa_chapter.py"), "--project", str(project),
+                                  "qa-fixture", "--all", "--port", port, "--json", str(summary_path),
+                                  "--md", str(Path(tmp) / "summary.md")],
+                                 capture_output=True, text=True, timeout=900, stdin=subprocess.DEVNULL)
+            report_path = project / "output" / "qa-fixture.qa.json"
+            if not report_path.exists() or not summary_path.exists():
+                print(run.stdout[-3000:], run.stderr[-2000:])
+                return rows + [("渲染测试场景", False, f"qa_chapter.py 退出码 {run.returncode}，见 output/qa-fixture.qa.log")]
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            rows += check_summary(json.loads(summary_path.read_text(encoding="utf-8")))
     finally:
         proj.write_text(original, encoding="utf-8")
         if not keep:
             scene_dst.unlink(missing_ok=True)
             scene_dst.with_suffix(".meta").unlink(missing_ok=True)  # Motion Canvas 渲染时会在场景旁写 .meta
+            (project / "output" / "qa-fixture.qa.deps.json").unlink(missing_ok=True)  # 场景已删，指纹没用了
             tl_dst.unlink(missing_ok=True)
             try:
                 scene_dst.parent.rmdir()

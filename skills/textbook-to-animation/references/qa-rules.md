@@ -19,7 +19,7 @@
 |---|---|---|---|
 | 预防 | 写场景时 | `lib/layout.ts`（attach / row / edgePoint）、`beats.ts` 的 `at()` | 让正确的写法成为默认写法，大部分缺陷根本不会出现 |
 | 静态检查 | 渲染前 | `lint_scenes.py` | 并行补间冲突、书页/图号/内部编号、两份时间轴不一致、文字卡和超宽 |
-| 渲染检查 | 渲染时 | `render.mjs --qa`（`lib/qa.ts`） | 文字被压、被线穿过、骑边、互叠、出画；标签先于它说明的对象出现（orphan）；动画超过旁白（overrun）；动画做完后静止过久（idle） |
+| 渲染检查 | 渲染时 | `qa_chapter.py`（逐场景 `render.mjs --qa`，规则在 `lib/qa.ts`） | 文字被压、被线穿过、骑边、互叠、出画；标签先于它说明的对象出现（orphan）；动画超过旁白（overrun）；动画做完后静止过久（idle） |
 | 实测 | 渲染后 | `sample_frames.py` | 每拍抽帧供人看；freezedetect 测画面真实定格 |
 
 规则都按“与具体教材无关的视觉规则”写，靠第 6 节的测试用例保证这一点。
@@ -81,14 +81,15 @@
 写场景（用 attach / row / edgePointIn / at 写）
   → npx tsc --noEmit
   → lint_scenes.py --timeline-dir … --narration …       有 FAIL → 按第 5 节修 → 回到 lint
-  → render.mjs <场景> --qa                               有 error → 按第 5 节修 → 重渲
+  → qa_chapter.py --project … --dir src/scenes/<章>     有 error → 按第 5 节修 → 再跑（只重渲改过的场景）
   → sample_frames.py <视频> --timeline … --scene …      看联系表；定格 ≥ 6s 的拍要改
   → 自检全部通过，才进入人工的四道审查
 ```
 
 - 每条 QA error 只有两种结局：**修掉**，或者确认是有意效果、给节点设 `qa-ignore-<说明>` key。不要通过调大阈值让它消失。
 - 修完一定重跑：修一处可能引入另一处（例如把动作改成跟着旁白开始后，动画反而超过了旁白——overrun 会报出来）。
-- 自检结果（lint 摘要、QA 的 error/warn 数、定格超标的拍）记进本轮 `review.md`。
+- 自检结果（lint 摘要、QA 的 error/warn 数、定格超标的拍）记进本轮 `review.md`；QA 汇总用 `--md rounds/<unit>/rN/qa.md` 直接存进本轮快照。
+- `qa_chapter.py --strict` 门槛没过时退出码为 1，可以接进脚本或 CI。改了 `render.mjs`、`headless.ts` 这类不被场景 import 的文件时加 `--all` 全部重渲。
 
 ## 5. 修复手册：报告里的每类发现怎么修
 
@@ -112,7 +113,8 @@
   叠化、半透明、遮罩、瞬时、描边高亮框、旋转卡片、圆里的字、被卡片挡住的线、`qa-ignore` 划线应不报 error，
   用 `attach` / `row` / `edgePointIn` / `at` 的正确写法应干净。期望写在同目录 `expect.json`。
 - `assets/motion-canvas/qa-fixtures/lint-fixture.tsx`：lint 的用例（冲突、书页图号、不该误报的百分位和拍号）。
-- `scripts/qa_selftest.py --project <motion-canvas 工程>`：把用例临时放进工程渲染、逐条比对，结束后自动清理。
+- `scripts/qa_selftest.py --project <motion-canvas 工程>`：把用例临时放进工程，用 `qa_chapter.py` 渲染、逐条比对，
+  并核对汇总（门槛判为未通过、列出的 error 拍与期望一致），结束后自动清理。
 
 **反馈循环**（在任何一章、任何一本书里发现误报或漏报时）：
 

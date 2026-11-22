@@ -38,6 +38,8 @@ export interface QaFinding {
   text: string;
   other?: string;
   ratio?: number;
+  /** idle / overrun：静止或超出的秒数（汇总脚本按它排序） */
+  seconds?: number;
   note?: string;
   /** 另一方节点的 key：按节点身份去重（坐标会随动画变化） */
   otherId?: string;
@@ -125,6 +127,7 @@ export function qaReportIdle(beat: string, idle: number, dur: number) {
       kind: 'idle',
       severity: idle >= c.idleError ? 'error' : 'warn',
       text: `动画做完后静止 ${idle.toFixed(1)}s（这一拍 ${dur.toFixed(1)}s）`,
+      seconds: +idle.toFixed(2),
       note: '把动作跟着旁白分步展开（at(phrase, …)），或加一段持续的慢动作',
     },
     useTime(),
@@ -140,6 +143,7 @@ export function qaReportOverrun(beat: string, spent: number, dur: number) {
       kind: 'overrun',
       severity: 'error',
       text: `动画 ${spent.toFixed(2)}s > 旁白 ${dur.toFixed(2)}s`,
+      seconds: +(spent - dur).toFixed(2),
     },
     useTime(),
   );
