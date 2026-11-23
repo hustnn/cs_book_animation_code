@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>headless render</title>
+  </head>
+  <body>
+    <div id="status">starting</div>
+    <!-- NOTE: the logic lives in /src/headless.ts, not inline here, because
+         Vite does not rewrite bare module specifiers in public/ files. -->
+    <script type="module" src="/src/headless.ts"></script>
+  </body>
+</html>
