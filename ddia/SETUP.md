@@ -108,7 +108,7 @@ python ../../../skills/textbook-to-animation/scripts/sample_frames.py output/<�
   的 PID 被当成锁主、超时无锁也开工、放锁误删别人的锁）。owner.txt 只写 unit 与
   acquired 时间戳，不写 PID；死锁只认“锁龄 > 120 分钟且无 render.mjs / manim 进程
   存活”同时成立（vite / Chrome 滞留不算）；放锁只按 unit 比对，别人的锁拒绝删除；
-  拿锁超时只报错退出，绝不无锁开工。新章节照抄一份 render-lock.sh 到本章
+  拿锁超时只报错退出，绝不无锁开工。新章节从已有章节（如 ch02）照抄一份 render-lock.sh 到本章
   skill-chNN/ 即可（锁目录按脚本位置推导）
 
 ## 新章节（照这个结构建，不要另起一套）
