@@ -75,6 +75,9 @@ python ../../../skills/textbook-to-animation/scripts/lint_scenes.py src/scenes/s
 # Motion Canvas 单场景（产物在 ch01/motion-canvas/output/<场景>.mp4）。
 # --qa：画面与时长不变，同时逐拍查文字被压/被线穿过/互叠/出画和动画超时，报告在 output/<场景>.qa.json
 cd ch01/motion-canvas && node scripts/render.mjs <场景名> --qa
+# 注意：render.mjs 没有 --help，传 --help 会直接启动整章渲染，不要试（2026-11-23 U4 续做踩到，已停用）。
+# 注意：qa_chapter.py 只认带 output/<场景>.qa.deps.json 指纹的报告；直接调 render.mjs --qa 渲染的报告没有指纹，
+# qa_chapter --no-render 会判“报告比代码旧”；让 qa_chapter 自己渲染，或重渲补指纹（两次渲染字节相同）。
 
 # Manim 单场景（-qm：720p 中等质量；不要和 Motion Canvas 写在同一行命令里，
 # 否则渲染批处理脚本的锁检查会把 manim 进程误判为活进程）
@@ -100,9 +103,13 @@ python ../../../skills/textbook-to-animation/scripts/sample_frames.py output/<�
 - 渲染前连续两次探针通过才开工（写文件 + ffmpeg + Chrome 启动 + 一个小场景渲染）；
   中途一旦出现 EPERM 或 exit 133 立即停手，不要继续渲染。一次探针通过不代表
   接下来稳定，故障会间歇复发
-- 内存紧张时不要并行跑两个重渲染；渲染用锁串行。锁目录的 owner.txt 写渲染进程
-  pid，只有锁的创建者写 owner.txt；判断死锁要确认 render.mjs、vite、Chrome
-  与 Manim/python 进程全都不在
+- 内存紧张时不要并行跑两个重渲染；渲染用锁串行。只准用各章 skill-chNN/render-lock.sh
+  拿锁/放锁（2026-11-23 立，U3 r1 锁事故：此前各单元现写 shell 导致 wait-loop shell
+  的 PID 被当成锁主、超时无锁也开工、放锁误删别人的锁）。owner.txt 只写 unit 与
+  acquired 时间戳，不写 PID；死锁只认“锁龄 > 120 分钟且无 render.mjs / manim 进程
+  存活”同时成立（vite / Chrome 滞留不算）；放锁只按 unit 比对，别人的锁拒绝删除；
+  拿锁超时只报错退出，绝不无锁开工。新章节照抄一份 render-lock.sh 到本章
+  skill-chNN/ 即可（锁目录按脚本位置推导）
 
 ## 新章节（照这个结构建，不要另起一套）
 

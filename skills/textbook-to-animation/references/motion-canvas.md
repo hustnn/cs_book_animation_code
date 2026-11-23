@@ -192,8 +192,10 @@ ffmpeg -f concat -safe 0 -i <unit>-video.txt -c:v libx264 -crf 18 -pix_fmt yuv42
 ffmpeg -f concat -safe 0 -i audio/<unit>.txt -c:a pcm_s16le <unit>-voice.wav
 # 3. 混流；字幕作为软字幕放进去，不烧进画面
 ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map 1:a -map 2 \
-  -c:v copy -c:a aac -b:a 160k -c:s mov_text -shortest <unit>.mp4
+  -c:v copy -c:a aac -b:a 160k -c:s mov_text <unit>.mp4
 ```
+
+混流不要加 `-shortest`：它按最短的流截断，字幕流常比音频先结束，会把音频截短；只有确认最短的流就是想截到的那条时才加。
 
 如果音频和视频的长度差超过 0.3s，说明有某拍的动画比音频长，被 `beat()` 顺延了：查渲染日志里的警告，改动画或改旁白。
 
