@@ -85,6 +85,8 @@ python ../../../skills/textbook-to-animation/scripts/sample_frames.py output/<�
   --timeline ../skill-ch01/timeline/<unit>.json --scene src/scenes/skill01/<场景名>.tsx -o <输出目录> \
   --ffmpeg node_modules/@ffmpeg-installer/<平台>/ffmpeg
 
+# 渲染后必查落盘完整性（QA 只查浏览器内场景，不查落盘文件）：每段 output/<场景>.mp4 用 ffprobe 核时长、用 ffmpeg 解码核 0 错误；曾出现过渲染日志成功但文件含两个 moov atom、解码 0 帧的情况，重渲一次恢复。
+# 混流默认不加 -shortest：它按最短的流截断，字幕流常比音频先结束，会把音频截短；只有确认最短的流就是想截到的那条时才加。
 # 时间轴：audio_timeline.py 的 -o 给两次，一次写出两份拷贝（不再手动同步）：
 #   <章>/skill-*/timeline/<unit>.json 与 <章>/motion-canvas/src/timeline/<unit>.json
 # 单元拼片与整章拼片见各章 skill 过程目录下的 assemble 脚本
