@@ -9,10 +9,10 @@
 #      匹配失败；且曾出现不核对 owner 就 rm -rf，误删了 U1 正在用的锁。
 # 从此所有单元只准用本脚本拿锁/放锁，不准再各自现写。
 #
-# 用法：
-#   render-lock.sh acquire <单元名> [超时分钟，默认 90]   # 拿到锁才退出 0；超时退出 1，绝不无锁开工
-#   render-lock.sh release <单元名>                       # 只放自己的锁，别人的锁拒绝并退出 1
-#   render-lock.sh status                                 # 看锁主、锁龄、存活的渲染进程
+# 用法（仓库里的文件无可执行位，用 bash 调用；本地 chmod +x 后也可直接运行）：
+#   bash render-lock.sh acquire <单元名> [超时分钟，默认 90]   # 拿到锁才退出 0；超时退出 1，绝不无锁开工
+#   bash render-lock.sh release <单元名>                       # 只放自己的锁，别人的锁拒绝并退出 1
+#   bash render-lock.sh status                                 # 看锁主、锁龄、存活的渲染进程
 #
 # 规则：
 # - owner.txt 只写 unit=<单元名> 与 acquired=<epoch>，不写 PID（PID 不可用于判活）。
