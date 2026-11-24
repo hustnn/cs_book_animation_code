@@ -16,7 +16,7 @@ const label = (text: string, extra: TxtProps = {}) => (
 export default makeScene2D(function* (view) {
   view.fill(T.bg);
   const beat = makeBeats(timeline);
-  const G = Array.from({length: 24}, () => createRef<Node>());
+  const G = Array.from({length: 27}, () => createRef<Node>());
   const r = {
     bar02: createRef<Rect>(),
     bar03: createRef<Rect>(),
@@ -35,6 +35,9 @@ export default makeScene2D(function* (view) {
     lab23: createRef<Txt>(),
     bar24: createRef<Rect>(),
     lab24: createRef<Txt>(),
+    chip25: createRef<Rect>(),
+    chip26: createRef<Rect>(),
+    chip27: createRef<Rect>(),
   };
   const xs08 = row(3, 150, 24, [0, 0]);
 
@@ -194,6 +197,28 @@ export default makeScene2D(function* (view) {
         <Rect ref={r.bar24} position={[-300, 0]} offset={[-1, 0]} width={0} height={44} fill={T.red} />
         <Txt ref={r.lab24} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} opacity={0} text={'更长'} />
       </Node>
+
+      {/* f25 带字的数据块 0.3 秒横穿 400px：眼睛跟不上 → warn fast-move */}
+      <Node ref={G[24]} opacity={0}>
+        <Rect ref={r.chip25} position={[-200, 0]} width={180} height={50} radius={8} fill={T.card} stroke={T.blue} lineWidth={2}>
+          {label('key:42')}
+        </Rect>
+      </Node>
+
+      {/* f27 块 0.45 秒飞进右边的大框、同时淡出（“小段并进大段”一闪而过）→ warn fast-move */}
+      <Node ref={G[26]} opacity={0}>
+        <Rect position={[300, 0]} width={240} height={120} radius={12} stroke={T.line} lineWidth={2} />
+        <Rect ref={r.chip27} position={[-300, 0]} width={180} height={50} radius={8} fill={T.card} stroke={T.blue} lineWidth={2}>
+          {label('小段')}
+        </Rect>
+      </Node>
+
+      {/* f26 同一个块，同样的距离走 1 秒 → 干净 */}
+      <Node ref={G[25]} opacity={0}>
+        <Rect ref={r.chip26} position={[-200, 0]} width={180} height={50} radius={8} fill={T.card} stroke={T.blue} lineWidth={2}>
+          {label('key:42')}
+        </Rect>
+      </Node>
     </>,
   );
 
@@ -258,4 +283,10 @@ export default makeScene2D(function* (view) {
   yield* beat('f23', chain(waitFor(0.8), r.bar23().width(300, 0.3)));
   show(23);
   yield* beat('f24', chain(waitFor(0.3), all(r.bar24().width(300, 0.6), r.lab24().opacity(1, 0.3))));
+  show(24);
+  yield* beat('f25', chain(waitFor(0.5), r.chip25().position([200, 0], 0.3)));
+  show(25);
+  yield* beat('f26', chain(waitFor(0.5), r.chip26().position([200, 0], 1.0)));
+  show(26);
+  yield* beat('f27', chain(waitFor(0.5), all(r.chip27().position([300, 0], 0.45), r.chip27().opacity(0, 0.45))));
 });

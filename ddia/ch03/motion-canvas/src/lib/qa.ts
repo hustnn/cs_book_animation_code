@@ -17,6 +17,8 @@
 //   overrun       error  这一拍的动画比旁白长，被顺延了
 //   idle          error  动画做完后这一拍还要静止 ≥ 6s（3–6s 为 warn）：旁白在讲、画面不动
 //   orphan        error  用 attach() 挂上的标签已经看得清，它说明的对象却还没出现（透明、宽或高不到 1px）或已退场
+//   fast-move     warn   看得清的文字一次移动不到 0.5s 就走了 ≥ 150px（逐帧跟踪）：观众的眼睛跟不上，
+//                        机制里的主角（数据块、消息、段）要走慢一点、一次一个
 // 降为 warn 的情况（仍会列出，供对照联系表扫一眼）：
 //   - 转场叠化：文字或图形的不透明度 < 0.6；
 //   - 半透明高亮：画在文字之上的填充，实际不透明度（节点 × 颜色 alpha）< 0.5，文字仍看得清；
@@ -26,9 +28,18 @@
 // 有意的划掉、打叉、遮罩：给那个节点设 key="qa-ignore-<说明>"，它和它的子节点都不参与检查。
 
 import {Circle, Curve, Node, Polygon, Rect, Shape, Txt, useScene2D} from '@motion-canvas/2d';
-import {BBox, ThreadGenerator, Vector2, useScene, useTime, waitFor} from '@motion-canvas/core';
+import {BBox, ThreadGenerator, Vector2, all, useScene, useTime, waitFor} from '@motion-canvas/core';
 
-export type QaKind = 'covered' | 'crossed' | 'text-overlap' | 'offscreen' | 'edge' | 'overrun' | 'idle' | 'orphan';
+export type QaKind =
+  | 'covered'
+  | 'crossed'
+  | 'text-overlap'
+  | 'offscreen'
+  | 'edge'
+  | 'overrun'
+  | 'idle'
+  | 'orphan'
+  | 'fast-move';
 
 export interface QaFinding {
   scene: string;
@@ -38,7 +49,7 @@ export interface QaFinding {
   text: string;
   other?: string;
   ratio?: number;
-  /** idle / overrun：静止或超出的秒数（汇总脚本按它排序） */
+  /** idle / overrun：静止或超出的秒数；fast-move：这次移动用了多少秒（汇总脚本按它排序） */
   seconds?: number;
   note?: string;
   /** 另一方节点的 key：按节点身份去重（坐标会随动画变化） */
@@ -74,6 +85,9 @@ export const QA_CONFIG = {
   idleError: 6,
   /** attach() 的对象宽或高小于它（像素）视为还没出现：标签不该先于对象出现 */
   subjectMin: 1,
+  /** 看得清的文字一次移动（从开始动到停下）用时 < fastMoveTime 秒、位移 ≥ fastMoveDist 像素，记 fast-move warn */
+  fastMoveTime: 0.5,
+  fastMoveDist: 150,
 };
 
 const cfg = () => ({...QA_CONFIG, ...(g.__MC_QA_CONFIG__ ?? {})});
@@ -495,8 +509,99 @@ export function qaCheck(beat: string) {
   }
 }
 
-/** 在一拍里的 5 个时刻采样检查；总时长不超过 dur，和 beat() 并行跑，不影响画面。 */
+/**
+ * 逐帧跟踪文字的世界坐标：一次移动从“停着、看得清（不透明度 ≥ solid）”开始，到再次停下、或者淡出看不见为止
+ * （“飞进去并消失”也是一次移动），用时 < fastMoveTime 且走过的距离 ≥ fastMoveDist 就记 fast-move warn。
+ * 拍首已经在动的（从上一拍延续过来、起点没看到）不评判。
+ */
+function* qaMotion(beat: string, dur: number): ThreadGenerator {
+  const view = useScene2D().getView();
+  const scene = useScene().name;
+  const c = cfg();
+  const frame = useScene().playback.framesToSeconds(1);
+  const start = useTime();
+  interface Track {
+    last: Vector2;
+    tLast: number;
+    opacity: number;
+    still: boolean; // 已经确认停过（才知道一次移动从哪开始）
+    moving: boolean;
+    clipped: boolean; // 这次移动的起点没看到
+    t0: number;
+    p0: Vector2;
+  }
+  const tracks = new Map<Node, Track>();
+  const judge = (n: Txt, tr: Track, end: Vector2, t: number) => {
+    const took = t - tr.t0;
+    const dist = end.sub(tr.p0).magnitude;
+    if (took < c.fastMoveTime && dist >= c.fastMoveDist) {
+      report(
+        {
+          scene,
+          beat,
+          kind: 'fast-move',
+          severity: 'warn',
+          text: textOf(n).slice(0, 24),
+          seconds: +took.toFixed(2),
+          ratio: Math.round(dist),
+          note: `${Math.round(dist)}px 只用了 ${took.toFixed(2)}s：主角的移动至少 0.6s，一次一个，跟着旁白`,
+        },
+        t,
+      );
+    }
+  };
+  while (useTime() - start + frame <= dur - 0.01) {
+    const t = useTime();
+    const seen = new Set<Node>();
+    const visit = (n: Node) => {
+      const opacity = n.absoluteOpacity();
+      if (opacity < 0.05) return; // 子节点只会更透明
+      if (n.key.startsWith('qa-ignore')) return;
+      if (n instanceof Txt) {
+        if (!textOf(n).trim()) return;
+        seen.add(n);
+        const p = n.absolutePosition();
+        const tr = tracks.get(n);
+        if (!tr) {
+          tracks.set(n, {last: p, tLast: t, opacity, still: false, moving: false, clipped: false, t0: t, p0: p});
+          return;
+        }
+        const moved = p.sub(tr.last).magnitude > 0.05;
+        if (moved && !tr.moving) {
+          tr.moving = true;
+          // 起点没看到（拍首就在动），或者开始动时还没看清（正在淡入），这次移动不评判
+          tr.clipped = !tr.still || tr.opacity < c.solid;
+          tr.t0 = tr.tLast;
+          tr.p0 = tr.last;
+        } else if (!moved && tr.moving) {
+          if (!tr.clipped) judge(n, tr, tr.last, tr.tLast);
+          tr.moving = false;
+        }
+        if (!moved) tr.still = true;
+        tr.last = p;
+        tr.tLast = t;
+        tr.opacity = opacity;
+        return;
+      }
+      n.peekChildren().forEach(visit);
+    };
+    visit(view);
+    for (const [n, tr] of [...tracks]) {
+      if (seen.has(n)) continue;
+      // 移动中途淡出看不见了：飞进去、消失，也算一次移动的结束
+      if (tr.moving && !tr.clipped && n instanceof Txt) judge(n, tr, tr.last, tr.tLast);
+      tracks.delete(n);
+    }
+    yield;
+  }
+}
+
+/** 在一拍里的 5 个时刻采样检查，并逐帧跟踪文字的移动；总时长不超过 dur，和 beat() 并行跑，不影响画面。 */
 export function* qaProbe(beat: string, dur: number): ThreadGenerator {
+  yield* all(qaSamples(beat, dur), qaMotion(beat, dur));
+}
+
+function* qaSamples(beat: string, dur: number): ThreadGenerator {
   const marks = [0.15, dur * 0.25, dur * 0.5, dur * 0.75, dur - 0.15]
     .filter(m => m >= 0 && m <= dur)
     .sort((a, b) => a - b);

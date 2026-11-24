@@ -233,14 +233,22 @@ def check_lock():
 def check_lint():
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
-        shutil.copy(FIX / "lint-fixture.tsx", Path(tmp) / "lint-fixture.tsx")
+        # 按工程里的相对位置摆放：场景 import '../../timeline/qa-fixture.json'，at() 的时间窗要靠它估
+        scenes = Path(tmp) / "src" / "scenes" / "lint"
+        scenes.mkdir(parents=True)
+        (Path(tmp) / "src" / "timeline").mkdir()
+        shutil.copy(FIX / "lint-fixture.tsx", scenes / "lint-fixture.tsx")
+        shutil.copy(FIX / "qa-fixture.json", Path(tmp) / "src" / "timeline" / "qa-fixture.json")
         out = Path(tmp) / "lint.json"
-        subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "lint_scenes.py"), tmp, "--json", str(out)],
+        subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "lint_scenes.py"), str(scenes), "--json", str(out)],
                        capture_output=True, text=True, stdin=subprocess.DEVNULL)
         data = json.loads(out.read_text(encoding="utf-8"))
     targets = sorted(c[2] for c in data.get("conflicts", []))
     rows.append(("lint 并行补间冲突 = box().opacity、dot().position",
                  targets == ["box().opacity", "dot().position"], f"实际 {targets}"))
+    overlaps = sorted(f"{c[2]} {c[3]}" for c in data.get("cue_overlaps", []))
+    rows.append(("lint 跨 at() 同对象补间 = f21 dot().position（不报不重叠的、同一 at 里 chain 的）",
+                 overlaps == ["f21 dot().position"], f"实际 {overlaps}"))
     visible = data.get("visible", [])
     kinds = {v[3] for v in visible if v[0] == "error"}
     for k in ["页码", "图表编号", "提到原书", "内部编号"]:

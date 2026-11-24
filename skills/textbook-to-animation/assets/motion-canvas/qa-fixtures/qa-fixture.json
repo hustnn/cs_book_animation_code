@@ -1,6 +1,6 @@
 {
   "unit": "qa-fixture",
-  "total": 54.7,
+  "total": 61.2,
   "pad": 0.35,
   "beats": [
     {
@@ -170,6 +170,27 @@
       "dur": 1.2,
       "speech": 0.85,
       "text": "测试用例 f24"
+    },
+    {
+      "id": "f25",
+      "start": 54.7,
+      "dur": 2.0,
+      "speech": 1.65,
+      "text": "测试用例 f25"
+    },
+    {
+      "id": "f26",
+      "start": 56.7,
+      "dur": 2.5,
+      "speech": 2.15,
+      "text": "测试用例 f26"
+    },
+    {
+      "id": "f27",
+      "start": 59.2,
+      "dur": 2.0,
+      "speech": 1.65,
+      "text": "测试用例 f27"
     }
   ]
 }

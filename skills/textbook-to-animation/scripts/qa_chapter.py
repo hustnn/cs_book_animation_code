@@ -19,7 +19,8 @@
   --strict     门槛没过时退出码为 1
 
 门槛：选中的场景都有最新的报告（渲染成功）、error 总数为 0。
-汇总里另列：idle warn（动画做完后静止 3–6s 的拍，人工审查时要逐条说得出理由）、各类 warn 的条数、
+汇总里另列：idle warn（动画做完后静止 3–6s 的拍，人工审查时要逐条说得出理由）、fast-move warn（看得清的文字
+一次移动不到 0.5s 就走了 ≥ 150px，观众跟不上，逐条看一眼是不是机制的主角）、各类 warn 的条数、
 没有用 beat() 计时的场景（QA 查不到，标为“未覆盖”，要人工看帧）。Manim 段不在范围内。
 每类 error 怎么修，见 references/qa-rules.md 第 5 节。
 """
@@ -167,7 +168,7 @@ def cell(s) -> str:
 
 
 def build(project, rows, findings_by_scene):
-    errors, idle, warn_kinds = [], [], Counter()
+    errors, idle, fast, warn_kinds = [], [], [], Counter()
     for r in rows:
         for f in findings_by_scene.get(r["name"], []):
             if f["severity"] == "error":
@@ -176,9 +177,12 @@ def build(project, rows, findings_by_scene):
                 warn_kinds[f["kind"]] += 1
                 if f["kind"] == "idle":
                     idle.append(f)
+                elif f["kind"] == "fast-move":
+                    fast.append(f)
     order = {r["name"]: i for i, r in enumerate(rows)}
     errors.sort(key=lambda f: (order.get(f["scene"], 0), min(f.get("times") or [0])))
     idle.sort(key=lambda f: -(seconds(f) or 0))
+    fast.sort(key=lambda f: (order.get(f["scene"], 0), min(f.get("times") or [0])))
     reasons = []
     bad = [r["name"] for r in rows if r["status"] in ("渲染失败", "没有报告", "报告比代码旧")]
     if bad:
@@ -193,6 +197,7 @@ def build(project, rows, findings_by_scene):
         "scenes": rows,
         "errors": errors,
         "idle": idle,
+        "fastMove": fast,
         "warnKinds": dict(warn_kinds.most_common()),
         "uncovered": [r["name"] for r in rows if r["status"] == "未覆盖"],
     }
@@ -245,6 +250,20 @@ def markdown(s, limit=None) -> str:
             out.append(f"| {f['scene']} | {f['beat']} | {f'{sec:.1f}s' if sec is not None else cell(f.get('text', ''))} |")
         if limit is not None and len(s["idle"]) > limit:
             out.append(f"| … | 另 {len(s['idle']) - limit} 条见汇总文件 | |")
+    else:
+        out.append("无。")
+
+    fast = s.get("fastMove", [])
+    shown = fast if limit is None else fast[:limit]
+    out += ["", f"## 移动过快的文字（fast-move warn，{len(fast)} 条：是机制的主角就放慢、一次一个）", ""]
+    if fast:
+        out += ["| 场景 | 拍 | 文字 | 距离 | 用时 |", "|---|---|---|---|---|"]
+        for f in shown:
+            sec = seconds(f)
+            out.append(f"| {f['scene']} | {f['beat']} | {cell(f.get('text', ''))} | {f.get('ratio', '?')}px | "
+                       f"{f'{sec:.2f}s' if sec is not None else '?'} |")
+        if limit is not None and len(fast) > limit:
+            out.append(f"| … | 另 {len(fast) - limit} 条见汇总文件 | | | |")
     else:
         out.append("无。")
 
