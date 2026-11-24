@@ -1,0 +1,57 @@
+{
+  "kind": "manim",
+  "summary": "Manim 技法图库：ValueTracker 联动、公式改写、推镜头、Graph 与沿边闪光、沿路径移动、排序动画、表格高亮。只用 Pango Text，不需要 LaTeX。",
+  "file": "gallery.py",
+  "scenes": [
+    "TailLatency",
+    "Gossip",
+    "PercentileSort"
+  ],
+  "frames": [
+    {
+      "scene": "TailLatency",
+      "t": 9.5,
+      "name": "m1-value-tracker"
+    },
+    {
+      "scene": "TailLatency",
+      "t": 18.5,
+      "name": "m2-transform-formula"
+    },
+    {
+      "scene": "TailLatency",
+      "t": 23.5,
+      "name": "m3-camera-zoom"
+    },
+    {
+      "scene": "Gossip",
+      "t": 2.6,
+      "name": "m4-move-along-path"
+    },
+    {
+      "scene": "Gossip",
+      "t": 13.0,
+      "name": "m5-passing-flash"
+    },
+    {
+      "scene": "Gossip",
+      "t": 18.5,
+      "name": "m6-graph-done"
+    },
+    {
+      "scene": "PercentileSort",
+      "t": 7.0,
+      "name": "m7-lagged-grow"
+    },
+    {
+      "scene": "PercentileSort",
+      "t": 14.0,
+      "name": "m8-sorted"
+    },
+    {
+      "scene": "PercentileSort",
+      "t": 19.5,
+      "name": "m9-table"
+    }
+  ]
+}

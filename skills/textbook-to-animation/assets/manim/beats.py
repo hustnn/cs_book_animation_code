@@ -37,7 +37,8 @@ class Beats:
             raise ValueError("需要 timeline_path 或 beats")
         self.scene = scene
         self.durations = {
-            b["id"]: b["dur"] if b.get("dur") is not None else estimate_duration(b.get("text", ""))
+            b["id"]: b["dur"] if b.get("dur") is not None
+            else estimate_duration(b.get("text", "")) + float(b.get("hold") or 0)  # 演示拍的静音
             for b in beats
         }
 

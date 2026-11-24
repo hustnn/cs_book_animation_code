@@ -21,6 +21,7 @@ motion-canvas/
 │   │   ├── beats.ts              # ← assets/motion-canvas/beats.ts
 │   │   ├── layout.ts             # ← assets/motion-canvas/layout.ts
 │   │   ├── qa.ts                 # ← assets/motion-canvas/qa.ts
+│   │   ├── schemas.ts            # ← assets/motion-canvas/schemas.ts（图式组件）
 │   │   └── card.tsx              # ← assets/motion-canvas/card.tsx
 │   ├── components/               # 自己的组件：Node、Queue、Packet、Table、BarSeries…
 │   ├── timeline/<unit>.json      # audio_timeline.py 的产物（也可以直接引用章节目录里的那份）
@@ -117,7 +118,14 @@ yield* dot().position(edgePointIn(dot(), server(), 'left', 26), 0.8);
 ## 4. 组件
 
 把反复出现的视觉元素做成组件，签名里只留“语义”参数（标题、状态、数值），样式从 theme 取。
-本 skill 不附带这些组件，下表是系统类教材里值得按需实现的一组（接口仅作建议）：
+
+**本 skill 附带一组图式组件**（`assets/motion-canvas/schemas.ts`）：有身份的数据块 `KV`、槽位容器 `Slots`（有序插入时其余让位、追加）、
+计量条 `Meter`、计数器 `Counter`、比特行 `Bits` 与 `hashLines`、镜头 `Cam`、分区框 `zone` 和角标 `tag`。
+讲数据结构、存储、索引、消息这类“数据在系统里怎么变”的机制时先用它们；选哪种、怎么组合，见 `references/visual-schemas.md`。
+2d 包自带的其他手段（Code 逐行、reparent、Layout、圆弧、Latex、虚线流动、沿曲线移动、SVG、后台任务、遮罩……）
+的适用场景和最小写法见 `references/techniques.md`，每种都在 `examples/mc-gallery/` 里演过一遍。
+
+下表是系统类教材里另外值得按需实现的一组（接口仅作建议）：
 
 | 组件 | 用途 | 关键方法 |
 |---|---|---|
@@ -163,6 +171,7 @@ Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server
 | `overrun` | error | 这一拍的动画比旁白长，被顺延了 |
 | `idle` | error / warn | 动画做完后这一拍还要静止 ≥ 6s 为 error，3–6s 为 warn |
 | `orphan` | error | `attach` 挂上的标签已经看得清，它说明的对象却还没出现（透明、宽或高 < 1px）或已退场 |
+| `fast-move` | warn | 逐帧跟踪：看得清的文字一次移动（到停下或淡出为止）不到 0.5s 就走了 ≥ 150px，观众跟不上 |
 
 降为 warn 的四种情况：转场叠化（任一方不透明度 < 0.6）、半透明高亮（压在文字上的填充实际不透明度 < 0.5）、
 遮罩层（用背景色填充，或面积 ≥ 画面一半）、瞬时（同一对元素只在一个采样点重叠：正在飞入、散开、穿过）。
@@ -173,7 +182,8 @@ Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server
 
 报告写到 `output/<场景名>.qa.json`，并在终端列出前 40 条（拍号、时刻、哪段文字、和哪个图形）。`--strict` 时有 error 退出码为 2。
 
-整章一起查用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`：逐个场景 `--qa` 渲染（默认只重渲内容改过的场景），
+整章一起查用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`：先过教学设计门槛
+（自动找章节目录里的 design.md 跑 `check_design.py`，没过就停、不渲染；`--design` 指定、`--no-design` 跳过），再逐个场景 `--qa` 渲染（默认只重渲内容改过的场景），
 汇总写到 `output/qa-summary.md` / `.json`——门槛结论、每个场景一行、要修的 error 清单（按场景、时刻排好）、
 静止 3–6s 的拍、没有用 `beat()` 计时因而查不到的场景。场景名单取 `project.ts` 里登记过的；
 目录里有像场景却没登记的文件会被报出来（render.mjs 渲染不了它们）。
@@ -227,4 +237,11 @@ ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map
 | 几个代理各自写 shell 拿锁、放锁：把拿锁后就退出的等锁 shell 的 pid 当锁主、超时没拿到锁也开工、放锁时误删别人的锁、忘了放锁；按进程名判活时，把同一行命令里的 `manim -qm` 当成活进程 | 不自己写：`render.mjs` 自带锁，Manim 等用 `render_lock.py run` 包一层；拿锁、放锁在同一个进程里，按持锁进程的 pid 判活 |
 | `audio_timeline.py` 按文件名 stem 建键，同一拍同时有 `.mp3` 与 `.wav` 时会撞键，丢掉垫音（曾有一拍因此丢了 8 秒多的垫音） | 已修：同一拍号有多个格式时脚本只用 `.wav` 并警告；仍建议删掉多余的 `.mp3` |
 | TTS 文本触发型缺陷：某句旁白在固定位置截断、后半句重复（如旁白「第六，运行时自检」在固定位置截断后重复数次）；同句重录、换写法仍在同一点截断 | 不要原句重试；把这拍拆成两拍或改写法。`audio_timeline.py` 的配音检查会把这类拍标成“疑似重复/多读”（有声段语速明显偏慢） |
+| 用 `Camera` 组件推镜头：它把子节点放进脱离场景树的 scene 节点，渲染 QA 遍历不到，报告“零问题”，画面却可能压字 | 用 `schemas.ts` 的 `Cam`：缩放、平移一个 world 节点（`cam.focus(p, zoom)`） |
+| 推镜头后，镜头外的文字被 QA 判成 `offscreen` | 推之前把镜头外的内容淡出（本来也不该留着分散注意力），不要调 QA |
+| 同一个块的连续移动拆进同一拍的几个 `at()`：前一段没走完后一段就开始，两个补间同时改 `position`，块来回抽动 | 串成一条 `chain(…)` 放进一个 `at()`；`lint_scenes.py` 会按旁白估出的时间窗报 warn |
+| 竖向的引导线、探针线压在块上的文字上（QA `crossed`） | 先 add 线、再 add 块，线从不透明块的后面穿过；块上的标签靠一侧放，不放在线经过的位置 |
+| 复制出的块（“复制一份写进日志”）先显形、再等着出发，和原块叠在一起两三个采样点（QA `covered` / `text-overlap`） | 复制块出发时才淡入（淡入和移动放在同一个 `all` 里） |
+| `qa-ignore-*` 的 key 重复：后建的节点拿不到 key，被当成普通线检查 | key 在场景里必须唯一，划线这类自动生成的加序号（`schemas.ts` 的 `KV.stale()` 已处理） |
+| `Icon` 组件在无头渲染时出不来：它要在线请求图标库 | 图标用本地 SVG 文件配 `Img` / `SVG` |
 | 嵌套数组当子节点：`rows.map(row => row.map(...))` 双重嵌套数组传给 fragment 的 children，里层数组被静默丢掉、整行元素不渲染（曾因此丢了一张表的整行）；QA 只检查文字是否出现、检不出“该出现却没出现” | 用 `flatMap` 展平再传；逐拍看全分辨率帧时核对每张表/每组元素的行数与原文一致 |

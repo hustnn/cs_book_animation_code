@@ -325,3 +325,84 @@ ddia-animation-demo/
 - **未做**：第 3 章本地还在用旧的 `render.mjs` 和 `render-lock.sh`（每章一把锁），换成 skill 的 `render.mjs` + `render-lock.mjs`
   之前，第 3 章的渲染和第 1、2 章互不排队；第 3 章代码推上来前要换掉。
 
+
+## 16. 图式库、讲透机制、节奏规则写进 skill（2026-11-24，skill v1.8.0）
+
+- **原因**：用户看了第 3 章（PR #14），提了三点：技术深度不够（SSTable、LSM 树怎么工作没讲清）；画面只有框和线，干巴；
+  12:52“小段并进大段”太快、看不清。查下来根因都在 skill：
+  - 单元只有时长上限，没有密度上限：U3 一个单元 24 个要点、272 秒，两种压缩合并策略合计 15 秒；
+  - 没有“用具体数据把机制走一遍”的要求，学习目标是复述题；
+  - 忠实原则下，原文之外的内容只能当“示意 / 引申”，没有补机制细节的正当通道；
+  - 没有图式库：第 3 章 53 个场景只用矩形、文字、线、圆拼；
+  - 时长锁死旁白，自检只查超时和静止过久，从不查“太快”（12:52 是三个方框各 0.45 秒飞进大框并淡出）；
+  - 新手测试 25 轮里 23 轮是做视频的代理自己代入作答。
+- **先做样片验证**：LSM 部分按新图式重做（`ch03/skill-ch03/sample-lsm/`，3 个场景、42 拍、4 分 16 秒，临时配音），用户看过同意方向。
+- **skill 改动**：
+  - SKILL.md：第三条原则“机制要讲透，而且要演出来”；第 1 步“深度延伸”（原文一两句带过的机制，补它怎么工作，写明依据、画面标“延伸 · 原文之外”）；
+    第 2 步密度上限（每单元 P0 机制 ≤ 3 个、每个 ≥ 4 拍）、学习目标至少一题机制走查、选图式、每条 P0 机制写走查例子；
+    第 3 步一步一拍、主角移动 ≥ 0.8s、演示拍（`hold`）、空框测试；第 6 步按图式写场景、不用 `Camera` 组件；
+    第 7 步新手测试必须交给没有上下文的会话或真人；门槛表加 5 行，“不要做的事”加 5 条。
+  - 新增 `references/visual-schemas.md`（选图式的四个问题、空框测试、14 种图式、全景图 / 推镜头 / 剖面放大、节奏、两个工具里常被忽略的手段、
+    外部图表工具的取舍、LSM 完整示例）和 `assets/motion-canvas/schemas.ts`（样片里的 KV、Slots、Meter、Counter、Bits、Cam、zone、tag）。
+  - 检查：渲染 QA 新增 `fast-move`（warn：逐帧跟踪文字，一次移动到停下或淡出为止不到 0.5s 走了 ≥ 150px），`qa_chapter.py` 汇总里单列；
+    lint 新增跨 `at()` 同对象补间（warn：同一拍几个 `at()` 补间同一对象同一属性，按旁白位置和 all / chain / 字面量时长估出的时间窗重叠）；
+    `audio_timeline.py`、`beats.ts`、`beats.py` 支持演示拍 `hold`（计入时长，拼接清单插入同样长的静音）。
+  - 其余：pedagogy 加“走一遍胜过讲一遍”和 5 个模式；failure-modes 加 25–31；motion-canvas 坑表加 7 条；qa-rules 加 K、L 两类；
+    templates、review-rubric、tool-routing 相应更新。
+- **验证**：
+  - `qa_selftest.py` 54/54：新增 f25（快移应报）、f26（同距离慢移不报）、f27（飞进大框同时淡出，即 12:52 的情形）、lint 跨 `at()` 用例。
+    第一版 fast-move 只跟踪看得清的文字，旧 U3 的 b25a 没报出来；加 f27 复现后改成跟踪到淡出为止，现在报出 2 条（“新段”630px / 0.33s、“小段”481px / 0.33s）。
+  - 样片也被报出 2 条：r6 查询块最后两跳 0.5s，c5 的块还没落位整组就淡出（边飞边消失）。已改：两跳拉到 0.6s，淡出推后 0.3s。
+  - lint 跨 `at()` 在第 3 章旧场景报 5 处（u13-mc1 b11、u14-mc1 b1、u2-mc2 b23、u4-mc3 b21a、u5-mc2 b15），抽看 u13、u2 两处属实，留给第 3 章重做时处理；样片 0 处。
+  - 演示拍：样片 r9 加 `"hold": 2.5`，timeline 与拼出的音轨都是 258.64s（原 256.14s），静音插在 r9 之后。
+- **工程同步**：`ch03/motion-canvas/src/lib/` 换上新的 `qa.ts`、`beats.ts`，加 `schemas.ts`；`ch01`、`ch02` 已定稿，没换（换了会让 qa_chapter 全部重渲）。
+- **下一步**：Muse 按 v1.8 重做第 3 章（r2），配正式音色。
+
+## 17. 示例进 skill、两个工具的技法图库、设计检查（2026-11-24，skill v1.9.0）
+
+- **原因**：用户看过 v1.8 后提了三点：LSM 样片应该作为 skill 的示例给 Muse 参照；要深挖两个库的丰富用法，写进 skill、
+  说明适合什么场景，并用示例演示出来；要确认“深度不够”等反馈落到了 skill 上，把说明（instruction）、示例（example）和
+  校验结合起来，让 Muse 后续真的照做。
+- **示例**（`skills/textbook-to-animation/examples/`）：
+  - `lsm/`：样片从第 3 章挪进 skill（第 3 章工程和 `skill-ch03/sample-lsm/` 里的副本删掉），补了按模板写的 `design.md`
+    （P0 机制、[走查] 题、图式四问、三张机制走查表、深度延伸及依据）和 42 拍的 `beats.md`（每拍标图式），`README.md` 写
+    原文讲到哪、视频讲到哪、图式 → 拍 → 代码，`frames/` 13 张关键帧。时间轴改名 `example-lsm.json`，装进任何工程都不会撞名。
+  - `mc-gallery/`：Motion Canvas 技法图库，2 个场景 21 拍，13 种技法，每种配一个真实的小机制：二分查找（Code 逐行 + 信号指针）、
+    B+ 树页分裂（reparent + 端点绑定节点的连线）、表插入删除（Layout 只补间尺寸）、一致性哈希加节点（createComputed + 圆弧）、
+    取模对比（Latex，MathJax 自带）、主从复制延迟（虚线流动 + 逐字打出）、请求往返（沿曲线移动 + 本地 SVG 图标）、
+    队列积压（spawn / cancel + loop + 派生位置）、范围扫描（遮罩聚光）。
+  - `manim-gallery/`：Manim 技法图库，3 个场景 9 拍，只用 Pango Text：尾延迟放大（ValueTracker + always_redraw、
+    TransformMatchingShapes、MovingCameraScene）、流言式广播（Graph、MoveAlongPath、ShowPassingFlash）、百分位（排序动画、Table）。
+- **说明**：新增 `references/techniques.md`——按教学场景反查技法；每种技法的样子、适合 / 不适合、最小写法、在哪个示例的哪一拍；
+  做示例时踩过的坑。`visual-schemas.md` 第 6、8 节改为指向它和 `examples/lsm/`。SKILL.md 新增“示例与检查”一节，
+  第 2、3、6、7 步各挂上要照着写的示例和写完要跑的检查；门槛表、文件索引、描述同步。
+- **校验**：
+  - `check_design.py`：design.md 的结构检查（P0 机制 ≤ 3、有 [走查] 题、图式四问、每个机制的走查 ≥ 3 步且 ≥ 4 拍、深度延伸写了依据、
+    拍号在 beats.json 里）；模板改成它能解析的结构；反例 `assets/design-fixtures/bad-design.md`。
+  - `lint_scenes.py` 加“画面手段”：每个场景用了哪些技法，只用框、线、文字的记 warn。
+  - `newbie_pack.py`：新手测试题包（旁白 + 联系表 + 学习目标题）和记录模板，交给没有上下文的会话作答。
+  - `examples.py`：`render`（临时装进工程、先 tsc、带 QA 渲染、结束清理）、`check`（示例当回归用例：QA 0 error、0 fast-move、
+    lint 门槛、0 处跨 `at()` 冲突、design.md 通过）、`frames`（按清单抽关键帧）。`qa_selftest.py` 加 check_design 的正反例。
+- **对照旧版第 3 章**：现有 `ch03-design.md` 跑 `check_design.py`，16 个单元全部 FAIL（没有 P0 机制密度、[走查] 题、图式）；
+  53 个场景的“画面手段”是 0 种——正好对应“深度不够”和“只有框和线”。
+- **环境**：本机原来没有 Manim 环境（系统 Python 3.9）。pip 证书报错用 `--native-tls`；`pycairo` 没有 macOS wheel，
+  用 conda-forge 建的隔离环境（在会话临时目录，不入库）。机器上没有 Noto Sans CJK，Manim 关键帧是回退字体渲的。
+  `SETUP.md`、skill `manim.md` 都写了这几条。
+- **下一步**：Muse 按 v1.9 重做第 3 章——先改 design.md 让 `check_design.py` 通过，再分镜、场景。
+
+## 18. 教学设计检查改成硬门槛（2026-11-24，skill v1.10.0）
+
+- **原因**：v1.9 里 `check_design.py` 只靠 SKILL.md 的规定和审查清单约束，后面的脚本不会因为 design.md 没过就拒绝运行；
+  Muse 跳过这一步，要到审查时才会被发现。用户要求做成流程里的硬门槛。
+- **做法**：
+  - `qa_chapter.py` 渲染前先过教学设计门槛：在工程上一级目录（章节目录）里找 `design.md` / `*-design.md`（深两层），
+    跑 `check_design.py`；有 FAIL、找不到、找到多份都直接停下、不渲染，退出码 2，并列出 FAIL。`--design` 指定文件，
+    `--design-beats` 顺带核对拍号，`--no-design` 跳过（只给不讲机制的工程和已定稿的旧章节用，汇总里写明“已跳过”）。
+    门槛通过时汇总第一行写“教学设计检查：通过（路径）”。
+  - `newbie_pack.py`：这个单元的设计检查有 FAIL 就不出题包（退出码 2）。
+  - `examples.py` 渲染示例时用示例自己的 design.md（没有就 `--no-design`），不拿宿主工程那一章的设计卡示例；
+    `qa_selftest.py` 渲染测试场景时用 `--no-design`。
+- **验证**：`qa_selftest.py` 新增 7 条（找不到 / 自动找到并放行 / 找到两份 / 坏设计列出 9 条 FAIL / `--no-design` /
+  没过时不渲染且退出码 2 / `newbie_pack` 没过不出题包）；第 3 章现有设计跑 `qa_chapter.py`：停在渲染前、列出 48 条 FAIL。
+- **对已有章节的影响**：第 1、2 章已定稿、设计早于这套结构，重跑 `qa_chapter.py` 要加 `--no-design`（`SETUP.md` 已写）；
+  第 3 章重做时不加，先把 design.md 改到检查通过。

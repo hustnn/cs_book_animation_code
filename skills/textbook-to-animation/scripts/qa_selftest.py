@@ -233,20 +233,94 @@ def check_lock():
 def check_lint():
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
-        shutil.copy(FIX / "lint-fixture.tsx", Path(tmp) / "lint-fixture.tsx")
+        # 按工程里的相对位置摆放：场景 import '../../timeline/qa-fixture.json'，at() 的时间窗要靠它估
+        scenes = Path(tmp) / "src" / "scenes" / "lint"
+        scenes.mkdir(parents=True)
+        (Path(tmp) / "src" / "timeline").mkdir()
+        shutil.copy(FIX / "lint-fixture.tsx", scenes / "lint-fixture.tsx")
+        shutil.copy(FIX / "qa-fixture.json", Path(tmp) / "src" / "timeline" / "qa-fixture.json")
         out = Path(tmp) / "lint.json"
-        subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "lint_scenes.py"), tmp, "--json", str(out)],
+        subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "lint_scenes.py"), str(scenes), "--json", str(out)],
                        capture_output=True, text=True, stdin=subprocess.DEVNULL)
         data = json.loads(out.read_text(encoding="utf-8"))
     targets = sorted(c[2] for c in data.get("conflicts", []))
     rows.append(("lint 并行补间冲突 = box().opacity、dot().position",
                  targets == ["box().opacity", "dot().position"], f"实际 {targets}"))
+    overlaps = sorted(f"{c[2]} {c[3]}" for c in data.get("cue_overlaps", []))
+    rows.append(("lint 跨 at() 同对象补间 = f21 dot().position（不报不重叠的、同一 at 里 chain 的）",
+                 overlaps == ["f21 dot().position"], f"实际 {overlaps}"))
     visible = data.get("visible", [])
     kinds = {v[3] for v in visible if v[0] == "error"}
     for k in ["页码", "图表编号", "提到原书", "内部编号"]:
         rows.append((f"lint 可见文字报出「{k}」", k in kinds, f"实际 {sorted(kinds)}"))
     bad = [v[4] for v in visible if v[4].startswith(("p99", "p50", "b3", "u7"))]
     rows.append(("lint 不误报百分位、拍号、key", not bad, f"误报 {bad}"))
+    return rows
+
+
+def check_design():
+    """check_design.py：完整样本（examples/lsm/design.md）全部通过；反例（design-fixtures/bad-design.md）报出预期的 FAIL。"""
+    rows = []
+    script = SKILL / "scripts" / "check_design.py"
+    ex = SKILL / "examples" / "lsm"
+    good = subprocess.run([sys.executable, "-I", str(script), str(ex / "design.md"), "--beats-json", str(ex / "beats.json")],
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    rows.append(("check_design：示例 LSM 的 design.md 全部通过", good.returncode == 0 and "[FAIL]" not in good.stdout,
+                 good.stdout[-400:]))
+    bad = subprocess.run([sys.executable, "-I", str(script), str(SKILL / "assets" / "design-fixtures" / "bad-design.md")],
+                         capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    fails, unit = set(), ""
+    for ln in bad.stdout.splitlines():
+        if ln.startswith("## 单元 "):
+            unit = ln[len("## 单元 "):][:1]
+        elif "[FAIL]" in ln:
+            fails.add(f"{unit}:{ln.split('[FAIL]')[1].split('：')[0].strip()}")
+    want = {"A:P0 机制", "A:机制走查 · 写入", "A:机制走查 · 读取", "A:机制走查 · 合并", "A:机制走查 · 分区",
+            "B:走查题", "B:图式", "C:机制走查 · 页分裂", "C:深度延伸"}
+    rows.append(("check_design：反例报出的 FAIL 与预期一致（密度、走查题、图式、走查长度、延伸依据；小结单元不查）",
+                 bad.returncode == 1 and fails == want, f"多 {sorted(fails - want)}，少 {sorted(want - fails)}"))
+    return rows
+
+
+def check_design_gate():
+    """qa_chapter.py 的教学设计门槛：好设计放行；坏设计、找不到、找到两份都拦下（不渲染）；--no-design 放行但标“跳过”。"""
+    sys.path.insert(0, str(SKILL / "scripts"))
+    import qa_chapter  # noqa: E402
+    rows = []
+    good = SKILL / "examples" / "lsm" / "design.md"
+    bad = SKILL / "assets" / "design-fixtures" / "bad-design.md"
+    with tempfile.TemporaryDirectory() as tmp:
+        ch = Path(tmp) / "chapter"
+        proj = ch / "motion-canvas"
+        proj.mkdir(parents=True)
+        r = qa_chapter.design_gate(proj)
+        rows.append(("qa_chapter 设计门槛：章节目录里没有设计 → 拦下", r["status"] == "missing", f"实际 {r['status']}"))
+        (ch / "skill-ch").mkdir()
+        shutil.copy(good, ch / "skill-ch" / "ch-design.md")
+        r = qa_chapter.design_gate(proj)
+        rows.append(("qa_chapter 设计门槛：自动找到 */*-design.md，好设计放行", r["status"] == "pass", f"实际 {r}"))
+        shutil.copy(bad, ch / "design.md")
+        r = qa_chapter.design_gate(proj)
+        rows.append(("qa_chapter 设计门槛：找到两份设计 → 拦下，要求 --design", r["status"] == "ambiguous", f"实际 {r['status']}"))
+        r = qa_chapter.design_gate(proj, ch / "design.md")
+        rows.append(("qa_chapter 设计门槛：坏设计 → 拦下并列出 FAIL", r["status"] == "fail" and len(r["fails"]) == 9,
+                     f"实际 {r['status']}，{len(r.get('fails', []))} 条"))
+        r = qa_chapter.design_gate(proj, skip=True)
+        rows.append(("qa_chapter 设计门槛：--no-design 放行、标为跳过", r["status"] == "skipped", f"实际 {r['status']}"))
+        run = subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "qa_chapter.py"), "--project", str(proj),
+                              "--design", str(ch / "design.md"), "--no-render"],
+                             capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        rows.append(("qa_chapter 设计没过时不渲染、退出码 2", run.returncode == 2 and "不渲染" in run.stdout,
+                     f"退出码 {run.returncode}"))
+        nb = SKILL / "scripts" / "newbie_pack.py"
+        beats = SKILL / "examples" / "lsm" / "beats.json"
+        bad_run = subprocess.run([sys.executable, "-I", str(nb), "--design", str(bad), "--unit", "单元 B", "--narration", str(beats),
+                                  "-o", str(Path(tmp) / "nb-bad")], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        good_run = subprocess.run([sys.executable, "-I", str(nb), "--design", str(good), "--unit", "LSM", "--narration", str(beats),
+                                   "-o", str(Path(tmp) / "nb-good")], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        rows.append(("newbie_pack：单元设计没过不出题包（退出码 2），过了才出", bad_run.returncode == 2
+                     and not (Path(tmp) / "nb-bad" / "prompt.md").exists() and good_run.returncode == 0
+                     and (Path(tmp) / "nb-good" / "prompt.md").exists(), f"退出码 {bad_run.returncode} / {good_run.returncode}"))
     return rows
 
 
@@ -307,7 +381,7 @@ def check_qa(project: Path, port: str, keep: bool):
         with tempfile.TemporaryDirectory() as tmp:
             summary_path = Path(tmp) / "summary.json"
             run = subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "qa_chapter.py"), "--project", str(project),
-                                  "qa-fixture", "--all", "--port", port, "--json", str(summary_path),
+                                  "qa-fixture", "--all", "--no-design", "--port", port, "--json", str(summary_path),
                                   "--md", str(Path(tmp) / "summary.md")],
                                  capture_output=True, text=True, timeout=900, stdin=subprocess.DEVNULL)
             report_path = project / "output" / "qa-fixture.qa.json"
@@ -351,7 +425,7 @@ def main():
     if a.lock_only:
         rows = check_lock()
     else:
-        rows = check_lint() + check_lock()
+        rows = check_lint() + check_design() + check_design_gate() + check_lock()
     if not a.lint_only and not a.lock_only:
         if not a.project:
             ap.error("渲染 QA 自检需要 --project（只测 lint 用 --lint-only）")

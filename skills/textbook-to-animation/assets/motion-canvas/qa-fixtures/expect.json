@@ -23,5 +23,8 @@
   "f21": "noerror",
   "f22": "noerror",
   "f23": "error:orphan",
-  "f24": "clean"
+  "f24": "clean",
+  "f25": "warn:fast-move",
+  "f26": "clean",
+  "f27": "warn:fast-move"
 }

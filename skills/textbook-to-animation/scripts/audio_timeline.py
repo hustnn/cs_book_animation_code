@@ -17,6 +17,8 @@
 - 时长：.wav 用标准库读取；其他格式调用 ffprobe（没有 ffprobe 时退回解析 `ffmpeg -i` 的输出）。
 - --pad：每拍末尾的留白（秒），会计入 dur；--concat-list 生成的清单会在拍与拍之间插入同样长的静音，
   所以拼出来的音轨和 timeline 严格对齐。
+- 演示拍：beats.json 里某拍写 "hold": 秒数，旁白念完后再多留这么久的静音给画面（复杂变换演完、让观众看清）。
+  hold 计入 dur、写进 timeline，拼接清单在这一拍后面插入 pad + hold 秒静音。
 
 配音检查（PCM wav 自动进行，给了 --beats 才能算语速）：
 - 疑似重复 / 多读  error：有声段语速（扣掉停顿后）比全单元中位数慢 30% 以上。TTS 在固定位置截断、
@@ -206,6 +208,10 @@ def main():
         beats = beats["beats"] if isinstance(beats, dict) else beats
         order = [b["id"] for b in beats]
         texts = {b["id"]: b.get("text", "") for b in beats}
+        holds = {b["id"]: float(b.get("hold") or 0) for b in beats}
+        bad = [i for i, h in holds.items() if h < 0 or h > 10]
+        if bad:
+            sys.exit(f"hold 要在 0–10 秒之间：{', '.join(bad)}（更长的静止该拆拍或加动作）")
         missing = [i for i in order if i not in files]
         extra = sorted(set(files) - set(order), key=natural_key)
         if missing:
@@ -215,16 +221,21 @@ def main():
     else:
         order = sorted(files, key=natural_key)
         texts = {}
+        holds = {}
 
     t = 0.0
     out_beats = []
     for bid in order:
         speech = duration_of(files[bid])
-        dur = round(speech + args.pad, 3)
-        out_beats.append({
+        hold = holds.get(bid, 0.0)
+        dur = round(speech + args.pad + hold, 3)
+        row = {
             "id": bid, "start": round(t, 3), "dur": dur, "speech": round(speech, 3),
             "file": files[bid].name, "text": texts.get(bid, ""),
-        })
+        }
+        if hold:
+            row["hold"] = hold
+        out_beats.append(row)
         t += dur
 
     timeline = {"unit": args.unit or args.audio_dir.name, "total": round(t, 3), "pad": args.pad,
@@ -285,22 +296,37 @@ def write_concat_list(args, out_beats):
     paths = [(args.audio_dir / b["file"]).resolve() for b in out_beats]
     params = {wav_params(p) for p in paths}
     lines = []
-    if args.pad > 0 and len(params) == 1 and None not in params:
+    holds = any(b.get("hold") for b in out_beats)
+    if (args.pad > 0 or holds) and len(params) == 1 and None not in params:
         nch, width, rate = params.pop()
-        # 文件名以 _ 开头：即使清单写在音频目录里，下次运行也不会被当成一拍
-        pad_path = args.concat_list.parent.resolve() / f"_pad_{int(args.pad * 1000)}ms.wav"
-        with wave.open(str(pad_path), "wb") as w:
-            w.setnchannels(nch)
-            w.setsampwidth(width)
-            w.setframerate(rate)
-            w.writeframes(b"\x00" * int(rate * args.pad) * nch * width)
-        for p in paths:
-            lines += [f"file '{p}'", f"file '{pad_path}'"]
-        note = f"已插入 {args.pad}s 静音（{pad_path.name}）"
+        made = {}
+
+        def silence(sec):
+            # 文件名以 _ 开头：即使清单写在音频目录里，下次运行也不会被当成一拍
+            ms = int(round(sec * 1000))
+            if ms not in made:
+                path = args.concat_list.parent.resolve() / f"_pad_{ms}ms.wav"
+                with wave.open(str(path), "wb") as w:
+                    w.setnchannels(nch)
+                    w.setsampwidth(width)
+                    w.setframerate(rate)
+                    w.writeframes(b"\x00" * int(rate * ms / 1000) * nch * width)
+                made[ms] = path
+            return made[ms]
+
+        for p, b in zip(paths, out_beats):
+            lines.append(f"file '{p}'")
+            gap = args.pad + b.get("hold", 0)
+            if gap > 0:
+                lines.append(f"file '{silence(gap)}'")
+        note = f"已插入 {args.pad}s 静音" + ("（演示拍另加 hold）" if holds else "")
     else:
         lines = [f"file '{p}'" for p in paths]
         note = ("音频不是同参数的 PCM wav，未插入静音：先用 "
                 f"ffmpeg -i X -af apad=pad_dur={args.pad} X.padded.wav 逐个补齐，或把 TTS 输出统一成 wav")
+        if holds:
+            note += "；演示拍的 hold 也没有插入，timeline 会比音轨长"
+
     args.concat_list.parent.mkdir(parents=True, exist_ok=True)
     args.concat_list.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"concat 清单 → {args.concat_list}；{note}")

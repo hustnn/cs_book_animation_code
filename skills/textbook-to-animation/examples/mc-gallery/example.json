@@ -1,0 +1,84 @@
+{
+  "kind": "motion-canvas",
+  "summary": "Motion Canvas 技法图库：Code 逐行、reparent、Layout、派生量与圆弧、Latex、虚线流动、沿曲线移动、SVG 图标、后台任务、遮罩聚光。每种手法配一个具体的小机制。",
+  "scenes": [
+    "mc-structures",
+    "mc-flows"
+  ],
+  "timeline": "beats.json",
+  "lib": [
+    "schemas.ts"
+  ],
+  "frames": [
+    {
+      "scene": "mc-structures",
+      "t": 10.8,
+      "name": "s02-code-pointers"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 20.4,
+      "name": "s04-code-found"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 33.5,
+      "name": "s06-reparent-split"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 40.7,
+      "name": "s07-separator-up"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 48.6,
+      "name": "s08-layout-insert"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 67.4,
+      "name": "s11-computed-ring"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 75.3,
+      "name": "s12-latex"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 11.5,
+      "name": "f02-dash-flow"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 18.2,
+      "name": "f03-replication-lag"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 23.4,
+      "name": "f04-curve-path"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 32.1,
+      "name": "f05-latency-sum"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 38.9,
+      "name": "f06-queue-grows"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 44.5,
+      "name": "f07-queue-drains"
+    },
+    {
+      "scene": "mc-flows",
+      "t": 56.4,
+      "name": "f09-spotlight"
+    }
+  ]
+}

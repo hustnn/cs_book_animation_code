@@ -12,8 +12,10 @@
 //   yield* beat('b3');                                // 只有旁白、画面不动（尽量少用）
 //   beat.dur('b4')                                    // 这一拍的时长，给铺满整拍的慢动作用
 //
-// timeline 来自 scripts/audio_timeline.py：{beats: [{id, dur, speech, text}]}。
-// 还没有音频时，也可以直接传 beats.json（[{id, text}]）：按字数估算时长，先把节奏搭起来。
+// timeline 来自 scripts/audio_timeline.py：{beats: [{id, dur, speech, text, hold?}]}。
+// 还没有音频时，也可以直接传 beats.json（[{id, text, hold?}]）：按字数估算时长，先把节奏搭起来。
+// 演示拍：beats.json 里给一拍写 "hold": 秒数，旁白念完后多留这么久的静音给画面（复杂的变换演完、让观众看清）；
+// audio_timeline.py 会把它计入 dur，并在拼接清单里插入同样长的静音。
 //
 // at(phrase, anim)：按 phrase 在这一拍旁白里的位置（汉字算 1、英文词算 1.5、标点停顿算 0.5）
 // 乘以实际配音时长，估出念到它的时刻，提前 lead 秒（默认 0.2）开始 anim。
@@ -30,6 +32,8 @@ export interface BeatSpec {
   dur?: number;
   speech?: number;
   text?: string;
+  /** 演示拍：旁白念完后多留的静音秒数（已计入 dur） */
+  hold?: number;
 }
 
 /** 一个跟旁白对齐的动作：旁白念到 phrase 时开始（提前 lead 秒）。 */
@@ -70,8 +74,9 @@ export function makeBeats(timeline: {beats: BeatSpec[]} | BeatSpec[]) {
   const list = Array.isArray(timeline) ? timeline : timeline.beats;
   const specs = new Map<string, {dur: number; speech: number; text: string}>();
   for (const b of list) {
-    const dur = b.dur ?? estimateDuration(b.text);
-    specs.set(b.id, {dur, speech: b.speech ?? Math.max(0, dur - PAD), text: b.text ?? ''});
+    const hold = b.hold ?? 0;
+    const dur = b.dur ?? estimateDuration(b.text) + hold;
+    specs.set(b.id, {dur, speech: b.speech ?? Math.max(0, dur - PAD - hold), text: b.text ?? ''});
   }
 
   /** 旁白念到 phrase 的时刻（相对拍首，秒）。 */

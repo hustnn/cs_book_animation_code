@@ -11,10 +11,14 @@
   4. 文字宽度估算超出安全区（未设 maxWidth/textWrap 的 Txt、卡片行）≤ --safe-width（默认 1160px）
   5. 文字卡行数                                                  ≤ --max-card-lines（默认 3）
   6. 并行补间冲突：同一 ref().属性 在一组 all(…) / sequence(0, …) 里被补间多次（动作会互相覆盖、播不出来）
+     另列 warn（不计入门槛）：同一拍 beat(id, …) 的几个并行部分（at() 只推迟开始）补间同一个对象的同一属性，
+     且按旁白估出的时间窗重叠——块会在两条路径之间抽动；要先后发生，放进同一个 at() 里的 chain(…)
   7. 观众可见文字：画面文字（text=、say()、card 的 title/lines、Manim 的 txt()/Text()）和旁白
      （场景 import 的 timeline、--narration 指定的 JSON）里不出现书页、图号、“书里/原图”、内部编号；
      “p6”这类可能是页码的写法记 warn（p50/p99 等百分位不算）
   8. 时间轴副本一致（给了 --timeline-dir 时）：场景 import 的 timeline 与章节目录里那份逐个比对
+  另列“画面手段”（不计入门槛）：每个场景用到了哪些图式组件和技法（references/techniques.md），
+  只用了框、线、文字的场景记 warn——讲机制的场景先选图式，再挑技法。
   另外给出提示（不计入门槛）：sequence(0, …)、硬编码的十六进制颜色、多个列表共用 key={String(i)}。
 
 时长从哪来：
@@ -108,7 +112,8 @@ def load_timeline(scene: Path, src: str):
             return {"__missing__": str(p)}
         data = json.loads(p.read_text(encoding="utf-8"))
         beats = data["beats"] if isinstance(data, dict) else data
-        return {b["id"]: (b.get("dur") if b.get("dur") is not None else estimate_duration(b.get("text", "")))
+        return {b["id"]: (b.get("dur") if b.get("dur") is not None
+                          else estimate_duration(b.get("text", "")) + float(b.get("hold") or 0))
                 for b in beats}
     return None
 
@@ -195,6 +200,211 @@ def tween_conflicts(src: str):
     return [found[k] for k in sorted(found)]
 
 
+# ---------- 同一拍里几个并行部分驱动同一对象 ----------
+# beat(id, a, at('词', b), …) 的各部分并行运行，at() 只推迟开始时间。两部分补间同一个对象的同一属性，
+# 时间窗一重叠，两个补间就在同一帧互相覆盖：块在两条路径之间抽动、或者干脆停在半路。
+# 静态只能估：开始时刻按旁白位置算（与 beats.ts 的 at() 一致），每个补间的时间窗按 all / chain / waitFor 的结构
+# 和字面量时长推算（时长不是字面量时按 0.6s），所以只记 warn。要先后发生的动作，放进同一个 at() 里用 chain(…) 串起来。
+
+CUE_PROPS = ("position|x|y|scale|opacity|rotation|width|height|size|fill|stroke|end|start|"
+             "absolutePosition|moveTo|moveBy|hide|show|appear")
+CUE_CALL = re.compile(r"\.\s*(" + CUE_PROPS + r")\s*\(")
+BEAT_CALL = re.compile(r"(?<![\w.$])beat\s*\(")
+AT_CALL = re.compile(r"at\s*\(")
+NUM = re.compile(r"^\d+(?:\.\d+)?$")
+W_CJK = re.compile(r"[㐀-鿿豈-﫿]")
+W_WORD = re.compile(r"[A-Za-z0-9.%]+")
+W_PAUSE = re.compile(r"[，。、：；！？,;:!?]")
+
+
+def speech_weight(text: str) -> float:
+    """与 beats.ts 的 weight() 一致：汉字 1、英文词 1.5、标点停顿 0.5。"""
+    return len(W_CJK.findall(text)) + len(W_WORD.findall(text)) * 1.5 + len(W_PAUSE.findall(text)) * 0.5
+
+
+def load_speech(scene: Path, src: str):
+    """{拍号: (念旁白的秒数, 旁白)}，给 at() 估开始时刻用。"""
+    p = timeline_path(scene, src)
+    if not p or not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    beats = data["beats"] if isinstance(data, dict) else data
+    out = {}
+    for b in beats:
+        text = b.get("text", "")
+        speech = b.get("speech")
+        if speech is None:
+            speech = max(0.0, (b.get("dur") or estimate_duration(text)) - PAD)
+        out[b["id"]] = (float(speech), text)
+    return out
+
+
+def receiver(src: str, dot: int) -> str:
+    """`.属性(` 前面的对象表达式（kv、kv.node、q()、r.seg[0]()），去掉空白。"""
+    i, depth = dot, 0
+    while i > 0:
+        c = src[i - 1]
+        if c in ")]":
+            depth += 1
+        elif c in "([":
+            if depth == 0:
+                break
+            depth -= 1
+        elif not (c.isalnum() or c in "_$." or depth > 0):
+            break
+        i -= 1
+    return re.sub(r"\s+", "", src[i:dot])
+
+
+STRUCT = re.compile(r"^(?:yield\*\s*)?(all|chain|sequence|waitFor|delay)\s*\(")
+TWEEN_CALL = re.compile(r"\.\s*(" + CUE_PROPS + r"|to)\s*\(")
+LAMBDA_PARAM = re.compile(r"\(?\s*([A-Za-z_$][\w$]*)\s*(?:,\s*[A-Za-z_$][\w$]*\s*)?\)?\s*=>")
+
+
+def literal(text: str, default: float) -> float:
+    return float(text) if NUM.match(text.strip()) else default
+
+
+def whole_call(text: str) -> bool:
+    """text 是不是一个完整的调用 f(…)，括号在末尾闭合。"""
+    i = text.index("(")
+    depth, quote = 0, None
+    for k in range(i, len(text)):
+        c = text[k]
+        if quote:
+            if c == "\\":
+                continue
+            if c == quote:
+                quote = None
+        elif c in "'\"`":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                return not text[k + 1:].strip()
+    return False
+
+
+def timed_tweens(src: str, pos: int, text: str, t: float, skip: set):
+    """估算一段动画表达式里每个补间的时间窗：返回 (结束时刻, [(对象.属性, 开始, 结束, 位置)])。
+    all / sequence(0, …) 并行取最长，chain 依次相加，waitFor / delay 推迟；其余按补间调用本身的时长。"""
+    m = STRUCT.match(text)
+    if m and whole_call(text):
+        kind = m.group(1)
+        args = top_level_args(src, pos + text.index("("))
+        if kind == "waitFor":
+            return t + (literal(args[0][1], 0.5) if args else 0.0), []
+        if kind == "delay":
+            if len(args) < 2:
+                return t, []
+            return timed_tweens(src, args[1][0], args[1][1], t + literal(args[0][1], 0.5), skip)
+        if kind == "chain":
+            out, cur = [], t
+            for a_pos, a_text in args:
+                cur, got = timed_tweens(src, a_pos, a_text, cur, skip)
+                out += got
+            return cur, out
+        step = 0.0
+        if kind == "sequence":
+            step, args = (literal(args[0][1], 0.2), args[1:]) if args else (0.0, [])
+        out, end = [], t
+        for k, (a_pos, a_text) in enumerate(args):
+            e, got = timed_tweens(src, a_pos, a_text, t + k * step, skip)
+            out += got
+            end = max(end, e)
+        return end, out
+    # 叶子：x().prop(v, d).to(v2, d2)… 或 kv.moveTo(p, d)；多个补间调用（比如 map 展开）按同时开始算
+    out, end, last_target, cur = [], t, None, t
+    for c in TWEEN_CALL.finditer(text):
+        args = top_level_args(src, pos + c.end() - 1)
+        if c.group(1) == "to":
+            if last_target and args:
+                d = literal(args[-1][1], 0.6)
+                out.append((last_target, cur, cur + d, pos + c.start()))
+                cur += d
+                end = max(end, cur)
+            continue
+        if len(args) < 2:  # 读取或瞬间设置，不是补间
+            last_target = None
+            continue
+        recv = receiver(src, pos + c.start())
+        root = re.split(r"[.(\[]", recv, 1)[0]
+        if not recv or recv in ("yield*", "this") or root in skip:
+            last_target = None
+            continue
+        d = literal(args[-1][1], 0.6)
+        last_target = f"{recv}.{c.group(1)}"
+        out.append((last_target, t, t + d, pos + c.start()))
+        cur = t + d
+        end = max(end, cur)
+    return end, out
+
+
+def cue_overlaps(src: str, speech: dict):
+    """返回 [(行号, 拍号, '对象.属性')]：同一拍的两个并行部分补间同一对象同一属性，估出的时间窗重叠。"""
+    out = []
+    for m in BEAT_CALL.finditer(src):
+        args = top_level_args(src, src.index("(", m.start()))
+        if len(args) < 3:
+            continue
+        bid = args[0][1].strip("'\"`")
+        windows = []  # (部分序号, 目标, 开始, 结束, 位置)
+        for k, (pos, text) in enumerate(args[1:]):
+            t0, body_pos, body = 0.0, pos, text
+            if AT_CALL.match(text):
+                at_args = top_level_args(src, pos + text.index("("))
+                if len(at_args) < 2:
+                    continue
+                phrase = at_args[0][1].strip("'\"`")
+                body_pos, body = at_args[1]
+                lead = float(at_args[2][1]) if len(at_args) > 2 and NUM.match(at_args[2][1]) else 0.2
+                sp, narration = speech.get(bid, (None, ""))
+                i = narration.find(phrase)
+                if sp is None or i < 0:
+                    continue  # 旁白里没有这个词：渲染时 at() 会直接报错
+                total = speech_weight(narration)
+                t0 = max(0.0, (sp * speech_weight(narration[:i]) / total if total else 0.0) - lead)
+            skip = set(LAMBDA_PARAM.findall(body))  # 箭头函数的参数名：不同部分里同名不等于同一个对象
+            _, tweens = timed_tweens(src, body_pos, body, t0, skip)
+            windows += [(k, *w) for w in tweens]
+        seen = set()
+        for i, (ka, ta, sa, ea, _) in enumerate(windows):
+            for kb, tb, sb, eb, wb in windows[i + 1:]:
+                if ka != kb and ta == tb and sa < eb - 0.01 and sb < ea - 0.01 and (bid, ta) not in seen:
+                    seen.add((bid, ta))
+                    out.append((src.count("\n", 0, wb) + 1, bid, ta))
+    return out
+
+
+# ---------- 画面手段 ----------
+# 按源码粗略识别用到的技法（名字与 references/techniques.md 一致），用来发现“全章只有框和线”。
+
+TECHNIQUES = [
+    ("数据块/容器", re.compile(r"new KV\(|new Slots\(")),
+    ("计数器/计量条", re.compile(r"new Counter\(|new Meter\(")),
+    ("信号/派生量", re.compile(r"createSignal\(|createComputed\(")),
+    ("Code 逐行", re.compile(r"<Code\b|new Code\(")),
+    ("reparent", re.compile(r"\.reparent\(")),
+    ("Layout 排版", re.compile(r"<Layout\b|new Layout\(|\blayout\s*:\s*true|<\w+[^>]*\slayout[\s>]")),
+    ("圆弧", re.compile(r"startAngle")),
+    ("Latex", re.compile(r"<Latex\b|new Latex\(")),
+    ("虚线流动", re.compile(r"lineDashOffset")),
+    ("沿曲线移动", re.compile(r"getPointAtPercentage")),
+    ("SVG/图片", re.compile(r"<SVG\b|new SVG\(|<Img\b|new Img\(")),
+    ("后台任务", re.compile(r"\bspawn\(|\bloop\(|\bloopFor\(")),
+    ("遮罩", re.compile(r"compositeOperation")),
+    ("推镜头", re.compile(r"new Cam\(")),
+    ("滤镜", re.compile(r"\.filters\.")),
+]
+
+
+def techniques_used(src: str):
+    code = re.sub(r"//[^\n]*", "", src)  # 注释里提到的不算
+    return [name for name, rx in TECHNIQUES if rx.search(code)]
+
+
 # ---------- 观众可见文字 ----------
 # 动画要自包含：画面和旁白里不出现书的页码、图号、“书里/原图”这类说法，也不出现内部编号（U3、b27）。
 
@@ -244,6 +454,8 @@ def lint_mc_scene(path: Path, a):
     r = {"file": path.name, "kind": "custom", "dur": None, "static": 0.0, "max_hold": 0.0,
          "overflow": [], "hints": []}
     r["conflicts"] = tween_conflicts(src)
+    r["cue_overlaps"] = cue_overlaps(src, load_speech(path, src))
+    r["techniques"] = techniques_used(src)
     r["visible"] = audit_source(src, MC_VISIBLE, path.name)
     r["timeline_path"] = timeline_path(path, src)
     seq0 = len(PAR_SEQ0.findall(src))
@@ -437,6 +649,28 @@ def main():
         for f, line, target, n in conflicts:
             print(f"  [error] {f} L{line}: {target} ×{n}")
 
+    overlaps = [(r["file"], *c) for r in results for c in r.get("cue_overlaps", [])]
+    if overlaps:
+        print("\n同一拍的几个并行部分补间同一对象（at() 只推迟开始，时间窗按旁白估算会重叠；"
+              "要先后发生就放进同一个 at() 的 chain）：")
+        for f, line, bid, target in overlaps:
+            print(f"  [warn] {f} L{line} {bid}: {target}")
+
+    # 画面手段
+    mc_custom = [r for r in results if r["kind"] == "custom" and "techniques" in r]
+    plain = [r["file"] for r in mc_custom if not r["techniques"]]
+    if mc_custom:
+        used = sorted({t for r in mc_custom for t in r["techniques"]})
+        print(f"\n画面手段（references/techniques.md）：全部场景合计用到 {len(used)} 种"
+              + (f"：{'、'.join(used)}" if used else ""))
+        for r in mc_custom:
+            if r["techniques"]:
+                print(f"  {r['file']}: {'、'.join(r['techniques'])}")
+        if plain:
+            print(f"  [warn] {len(plain)}/{len(mc_custom)} 个场景只用了框、线、文字：{', '.join(plain[:12])}"
+                  + (" …" if len(plain) > 12 else "")
+                  + "\n         讲机制的场景先按 visual-schemas.md 选图式，再到 techniques.md 挑技法")
+
     # 观众可见文字：场景里的画面文字 + 旁白（场景 import 的 timeline、--narration）
     visible = [v for r in results for v in r.get("visible", [])]
     imported = {r["timeline_path"] for r in results if r.get("timeline_path")}
@@ -486,6 +720,7 @@ def main():
 
     if a.json:
         a.json.write_text(json.dumps({"scenes": results, "card_share": share, "conflicts": conflicts,
+                                      "cue_overlaps": overlaps, "plain_scenes": plain if mc_custom else [],
                                       "visible": visible, "timeline_drift": drift,
                                       "gates": [{"name": n, "pass": ok} for n, ok, _ in gates]},
                                      ensure_ascii=False, indent=2, default=str), encoding="utf-8")

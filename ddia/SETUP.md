@@ -64,6 +64,11 @@ cd ../manim && python -m venv .venv && .venv/bin/pip install -r requirements.txt
 # 注意：移动工程目录后需重建 venv——venv 的 bin/* shebang 写的是旧绝对路径
 ```
 
+macOS 上 `pycairo` 没有现成的 wheel，上面的 pip 会从源码编译、要求本机有 cairo 和 pkg-config。不想装系统包时用 conda-forge
+建隔离环境：`conda create -p <目录> -c conda-forge python=3.12 pycairo`，再用它的 python 装其余依赖
+（`uv pip install --native-tls --python <目录>/bin/python -r requirements.txt`；公司网络下 pip 报证书错误时 `--native-tls` 用系统证书）。
+没装 `Noto Sans CJK SC` 时 Manim 会回退到别的中文字体并刷警告，正式渲染前装好。
+
 ## 渲染
 
 ```bash
@@ -78,6 +83,8 @@ python ../../../skills/textbook-to-animation/scripts/lint_scenes.py src/scenes/s
 cd ch01/motion-canvas && node scripts/render.mjs <场景名> --qa
 # 注意：qa_chapter.py 只认带 output/<场景>.qa.deps.json 指纹的报告；直接调 render.mjs --qa 渲染的报告没有指纹，
 # qa_chapter --no-render 会判“报告比代码旧”；让 qa_chapter 自己渲染，或重渲补指纹（两次渲染字节相同）。
+# skill v1.10 起 qa_chapter 渲染前先查教学设计（章节目录里的 *-design.md 跑 check_design.py，没过不渲染）。
+# 第 1、2 章已定稿、设计早于这套结构，重跑 qa_chapter 时加 --no-design；第 3 章起不要加，先把 design.md 改到检查通过。
 
 # Manim 单场景（-qm：720p 中等质量）：用 render_lock.py run 包一层，和 Motion Canvas 共用同一把渲染锁
 cd ch01/manim && python ../../../skills/textbook-to-animation/scripts/render_lock.py run <场景类> -- \
