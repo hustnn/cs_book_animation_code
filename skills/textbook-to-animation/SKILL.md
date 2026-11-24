@@ -3,7 +3,7 @@ name: textbook-to-animation
 description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.6.1"
+  version: "1.7.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -76,6 +76,7 @@ metadata:
 | `assets/motion-canvas/render/headless.ts` | `motion-canvas/src/headless.ts` | 无头渲染入口 |
 | `assets/motion-canvas/render/headless.html` | `motion-canvas/public/headless.html` | 加载上面的入口 |
 | `assets/motion-canvas/render/render.mjs` | `motion-canvas/scripts/render.mjs` | 渲染驱动（在 `motion-canvas/` 下运行） |
+| `assets/motion-canvas/render/render-lock.mjs` | `motion-canvas/scripts/render-lock.mjs` | 渲染锁：`render.mjs` 自动用，整台机器同一时间只跑一个渲染 |
 | `assets/motion-canvas/render/vite.config.ts` | `motion-canvas/vite.config.ts` | Vite 插件配置，文件头写了依赖清单 |
 | `assets/manim/theme.py`、`assets/manim/beats.py` | `manim/` | Manim 版的 theme 和 `Beats` |
 
@@ -205,7 +206,11 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
   画面和旁白里的**书页、图号、“书里/原图”、内部编号**、**两份时间轴不一致**。
 - 渲染：MC 用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`，一条命令把这一章的场景逐个用 `--qa` 渲染并汇总；
   默认只重渲改过的场景（场景文件或它 import 的 lib、组件、时间轴内容变了才重渲），修完再跑一遍很快。
-  单个场景也可以在 `motion-canvas/` 下 `node scripts/render.mjs <场景名> --qa`。Manim `manim -qm <文件> <场景类>`。
+  单个场景也可以在 `motion-canvas/` 下 `node scripts/render.mjs <场景名> --qa`。
+  Manim 用 `python <skill>/scripts/render_lock.py run <单元> -- manim -qm <文件> <场景类>`。
+  **渲染锁**：整台机器同一时间只跑一个渲染（几个代理并行做不同单元时排队，不抢内存、不抢 Chrome）。
+  `render.mjs` 自己拿锁、渲完放锁（`qa_chapter.py` 逐个场景各拿一次，别的单元能插进来）；Manim 和其他重活用 `render_lock.py run` 包一层。
+  等锁超过 `--lock-timeout`（默认 90 分钟）就退出码 3、不渲染：停下来汇报，不要绕过锁。持锁进程崩了，下一个等锁的会自动清掉。
   `--qa` 的画面和时长与正常渲染完全一致，同时在每拍 5 个时刻（拍首、25%、50%、75%、拍末）检查文字被图形压住、
   被线穿过、骑在图形边上、文字互叠、出画、标签先于对象出现，以及动画超过旁白、做完后静止过久，
   每个场景的报告写到 `output/<场景名>.qa.json`；汇总写到 `output/qa-summary.md`：门槛结论、每个场景一行、
@@ -276,6 +281,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - 不要把原书没有的数字或公式当作书的内容；示意模型也不要用错数学术语（例如说 1/(1−ρ) 有“拐点”）。
 - 不要在一张图里混用两种坐标语义；要变换，就用动画把变换演出来。
 - 不要按绝对坐标把标签摆在会长大、会移动的图形旁边，也不要借用别的组的坐标摆标签：用 `attach`。
+- 不要自己写 shell 拿锁、放锁，也不要手动删锁目录：用 `render.mjs` 自带的锁和 `render_lock.py run`（`render_lock.py status` 看锁在谁手里）。
 - 不要为了让 QA 报告变干净而调大阈值；规则要改，先在 `qa-fixtures` 里加复现用例、跑 `qa_selftest.py`（见 `references/qa-rules.md` 第 6 节）。
 - 不要只照着清单或分镜生成，也不要只拿清单审查：生成和审查都要回到原文。
 - 不要只读图注就画图：图里的读法、数字、标注要看图本身。也不要把原书的图截图贴进画面：一律重画
@@ -299,5 +305,6 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | `scripts/audio_timeline.py` | 音频 → timeline.json（可同时写多份）+ SRT + 拼接清单 + 配音检查 |
 | `scripts/sample_frames.py` | 渲染后：按拍抽帧、联系表、每拍最长定格 |
 | `scripts/qa_chapter.py` | 第 6 步：整章渲染 QA 一条命令跑完并汇总（门槛结论、error 清单、静止 3–6s 的拍、未覆盖场景）；默认只重渲改过的场景 |
-| `scripts/qa_selftest.py` | 自检规则的通用测试：改规则后、新环境搭好后跑，全部通过才算规则可用 |
+| `scripts/render_lock.py` | 渲染锁：`run <名字> -- <命令>` 拿锁跑命令再放锁（Manim、拼片等），`status` 看锁在谁手里；与 `render.mjs` 的锁互认 |
+| `scripts/qa_selftest.py` | 自检规则（含渲染锁）的通用测试：改规则或渲染锁后、新环境搭好后跑，全部通过才算规则可用 |
 | `assets/` | theme、beat（含 `at()` 旁白对齐）、layout（防压字摆位）、渲染 QA、文字卡、无头渲染管线、`qa-fixtures/` 测试用例 |

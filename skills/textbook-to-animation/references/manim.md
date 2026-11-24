@@ -56,8 +56,11 @@ class TailAmplification(Scene):
 
 ```bash
 .venv/bin/manim -ql <chapter>/<file>.py SceneName    # 480p15 迭代
-.venv/bin/manim -qm <chapter>/<file>.py SceneName    # 720p30 定稿，和 MC 一致
+python <skill>/scripts/render_lock.py run <单元> -- .venv/bin/manim -qm <chapter>/<file>.py SceneName    # 720p30 定稿，和 MC 一致
 ```
+
+`-qm` 是重渲染，和 Motion Canvas 渲染共用一把渲染锁（整台机器同一时间只跑一个）：`render_lock.py run` 拿锁、跑完放锁，
+别人在渲染时排队；等锁超时退出码 3，没有渲染。`-ql` 迭代很轻，可以不包。
 
 产物在 `media/videos/<file>/720p30/SceneName.mp4`，拷到 `videos/` 后再拼接。`-p` 会尝试打开播放器，无头环境下报错无害。
 

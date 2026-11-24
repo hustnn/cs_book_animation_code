@@ -74,17 +74,22 @@ python ../../../skills/textbook-to-animation/scripts/lint_scenes.py src/scenes/s
 
 # Motion Canvas 单场景（产物在 ch01/motion-canvas/output/<场景>.mp4）。
 # --qa：画面与时长不变，同时逐拍查文字被压/被线穿过/互叠/出画和动画超时，报告在 output/<场景>.qa.json
+# render.mjs 自己拿渲染锁（别人在渲染就排队，见下面“环境稳定性”）；参数见 node scripts/render.mjs --help
 cd ch01/motion-canvas && node scripts/render.mjs <场景名> --qa
+# 注意：qa_chapter.py 只认带 output/<场景>.qa.deps.json 指纹的报告；直接调 render.mjs --qa 渲染的报告没有指纹，
+# qa_chapter --no-render 会判“报告比代码旧”；让 qa_chapter 自己渲染，或重渲补指纹（两次渲染字节相同）。
 
-# Manim 单场景（-qm：720p 中等质量；不要和 Motion Canvas 写在同一行命令里，
-# 否则渲染批处理脚本的锁检查会把 manim 进程误判为活进程）
-cd ch01/manim && .venv/bin/manim -qm -p <文件>.py <场景类>
+# Manim 单场景（-qm：720p 中等质量）：用 render_lock.py run 包一层，和 Motion Canvas 共用同一把渲染锁
+cd ch01/manim && python ../../../skills/textbook-to-animation/scripts/render_lock.py run <场景类> -- \
+  .venv/bin/manim -qm -p <文件>.py <场景类>
 
 # 渲染后：按拍抽帧 + 联系表 + 每拍最长定格（ffmpeg 可用工程里自带的那份）
 python ../../../skills/textbook-to-animation/scripts/sample_frames.py output/<场景名>.mp4 \
   --timeline ../skill-ch01/timeline/<unit>.json --scene src/scenes/skill01/<场景名>.tsx -o <输出目录> \
   --ffmpeg node_modules/@ffmpeg-installer/<平台>/ffmpeg
 
+# 渲染后必查落盘完整性（QA 只查浏览器内场景，不查落盘文件）：每段 output/<场景>.mp4 用 ffprobe 核时长、用 ffmpeg 解码核 0 错误；曾出现过渲染日志成功但文件含两个 moov atom、解码 0 帧的情况，重渲一次恢复。
+# 混流默认不加 -shortest：它按最短的流截断，字幕流常比音频先结束，会把音频截短；只有确认最短的流就是想截到的那条时才加。
 # 时间轴：audio_timeline.py 的 -o 给两次，一次写出两份拷贝（不再手动同步）：
 #   <章>/skill-*/timeline/<unit>.json 与 <章>/motion-canvas/src/timeline/<unit>.json
 # 单元拼片与整章拼片见各章 skill 过程目录下的 assemble 脚本
@@ -98,9 +103,14 @@ python ../../../skills/textbook-to-animation/scripts/sample_frames.py output/<�
 - 渲染前连续两次探针通过才开工（写文件 + ffmpeg + Chrome 启动 + 一个小场景渲染）；
   中途一旦出现 EPERM 或 exit 133 立即停手，不要继续渲染。一次探针通过不代表
   接下来稳定，故障会间歇复发
-- 内存紧张时不要并行跑两个重渲染；渲染用锁串行。锁目录的 owner.txt 写渲染进程
-  pid，只有锁的创建者写 owner.txt；判断死锁要确认 render.mjs、vite、Chrome
-  与 Manim/python 进程全都不在
+- 内存紧张时不要并行跑两个重渲染；渲染用 skill 的渲染锁串行，整台机器一把，不分章节
+  （2026-11-24 起，取代第 2 章各单元现写的 shell 和 `skill-chNN/render-lock.sh`）：
+  `render.mjs`（以及调用它的 `qa_chapter.py`）自己拿锁；Manim、拼片等重活用
+  `skills/textbook-to-animation/scripts/render_lock.py run <名字> -- <命令>`，拿锁、跑命令、
+  放锁在同一个进程里。等锁超时退出码 3：停下汇报，绝不无锁开工。不要手动删锁目录，
+  也不要自己写 shell 拿锁/放锁；`render_lock.py status` 看锁在谁手里，持锁进程不在了
+  下一个等锁的会自动清。各章 `motion-canvas/scripts/` 要用 skill 里的新版 `render.mjs`
+  和 `render-lock.mjs`（从 `assets/motion-canvas/render/` 拷，两份都要），旧版不拿锁
 
 ## 新章节（照这个结构建，不要另起一套）
 

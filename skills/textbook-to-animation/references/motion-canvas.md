@@ -29,6 +29,7 @@ motion-canvas/
 │   └── headless.ts               # ← assets/motion-canvas/render/headless.ts
 ├── public/headless.html          # ← assets/motion-canvas/render/headless.html
 ├── scripts/render.mjs            # ← assets/motion-canvas/render/render.mjs
+├── scripts/render-lock.mjs       # ← assets/motion-canvas/render/render-lock.mjs（render.mjs 自动用）
 └── vite.config.ts                # ← assets/motion-canvas/render/vite.config.ts
 ```
 
@@ -136,7 +137,12 @@ yield* dot().position(edgePointIn(dot(), server(), 'left', 26), 0.8);
 
 Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server + Puppeteer 打开 `public/headless.html` → `src/headless.ts` 调用 `Renderer#render`。
 
-- 单场景：在 `motion-canvas/` 目录下运行 `node scripts/render.mjs <场景名>`（项目里的渲染驱动，不是本 skill 的 scripts/）→ `output/<场景名>.mp4`；可选 `--w --h --fps --port --timeout`。
+- 单场景：在 `motion-canvas/` 目录下运行 `node scripts/render.mjs <场景名>`（项目里的渲染驱动，不是本 skill 的 scripts/）→ `output/<场景名>.mp4`；可选 `--w --h --fps --port --timeout --lock-timeout`；`--help` 打印用法。不认识的参数直接报错退出（退出码 64），不会被当成场景名去渲染整个工程。
+- 渲染锁：`render.mjs` 启动时先拿整台机器的渲染锁（默认 `/tmp/textbook-to-animation.render-lock`，环境变量 `RENDER_LOCK_PATH` 可改），
+  别的渲染在跑就排队，日志里有 `[lock] 排队等渲染锁：<谁>`；渲完、出错、被 Ctrl+C 都会放锁。
+  `--lock-timeout` 分钟（默认 90）内拿不到锁：退出码 3，不渲染。持锁的是渲染进程自己，锁里记着它的 pid；
+  进程被强杀，pid 不在了，下一个等锁的自动清掉，不用等。Manim 用 skill 的 `scripts/render_lock.py run <名字> -- manim …`，同一把锁。
+  `python <skill>/scripts/render_lock.py status` 看锁在谁手里。
 - `RendererSettings.size` 必须是 `new Vector2(w, h)`；传数组会算出 NaN，ffmpeg 失败。
 - 渲染错误不抛异常，只走 `onFinished` 的结果码和 `project.logger`；`headless.ts` 已把它们转到 console，`render.mjs` 会打印出来。
 - 任何一个场景有语法错误都会导致整个 project 加载失败，**渲染前先跑 `npx tsc --noEmit`**。
@@ -174,6 +180,7 @@ Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server
 “改过”按内容判断：每次渲染成功后记下场景和它 import 的文件的指纹，内容没变（切分支、复制同样的文件）就不重渲；
 只认它自己渲染、带指纹的报告，直接用 render.mjs 渲的报告会被重渲一次。场景渲染失败（比如抛错）时
 `render.mjs` 不写 QA 报告，汇总里记为“渲染失败”，不会被当成 0 error。
+每个场景各拿一次渲染锁，别的单元的渲染能插在两个场景之间；某个场景等锁超时（`--lock-timeout`），就停下不再渲染后面的场景，都记为“渲染失败（等渲染锁超时）”。
 
 - 画面和时长与正常渲染完全一致：探针只读不写，总长不超过这一拍，直接用 QA 渲染的产物当成片也可以。
 - 有意的划掉、打叉、遮罩：给那个节点设 `key="qa-ignore-<说明>"`，它和子节点都不参与检查。
@@ -192,8 +199,10 @@ ffmpeg -f concat -safe 0 -i <unit>-video.txt -c:v libx264 -crf 18 -pix_fmt yuv42
 ffmpeg -f concat -safe 0 -i audio/<unit>.txt -c:a pcm_s16le <unit>-voice.wav
 # 3. 混流；字幕作为软字幕放进去，不烧进画面
 ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map 1:a -map 2 \
-  -c:v copy -c:a aac -b:a 160k -c:s mov_text -shortest <unit>.mp4
+  -c:v copy -c:a aac -b:a 160k -c:s mov_text <unit>.mp4
 ```
+
+混流不要加 `-shortest`：它按最短的流截断，字幕流常比音频先结束，会把音频截短；只有确认最短的流就是想截到的那条时才加。
 
 如果音频和视频的长度差超过 0.3s，说明有某拍的动画比音频长，被 `beat()` 顺延了：查渲染日志里的警告，改动画或改旁白。
 
@@ -215,7 +224,7 @@ ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map
 | 一拍里几个动作并行、0.5s 做完，之后静止 5 秒以上（freezedetect 对小物体慢移动不敏感，抽帧也看不出） | `at('词', 动作)` 跟着旁白展开；QA 的 `idle` 会报出来 |
 | `ffmpeg` 抽帧循环不加 `-nostdin` 会吞 stdin，导致文件名截断、联系表错乱 | 用 `sample_frames.py`（已加 `-nostdin`）；自己写抽帧命令时一律加 |
 | 时间轴有两份拷贝：`timeline/<unit>.json`（章节目录里那份）与 Motion Canvas 场景 import 的 `motion-canvas/src/timeline/<unit>.json` 是独立的；重算时间轴后不把新文件同步到 `src/timeline/`，渲染会静默用旧时长 | `audio_timeline.py` 的 `-o` 给两次，一次写出两份；`lint_scenes.py --timeline-dir` 会比对两份是否一致 |
-| 渲染批处理脚本的锁检查会把调用方同一行命令里的 `manim -qm` 误判为活进程（LOCK-BUSY） | Motion Canvas 渲染与 Manim 渲染分两次调用，不要写在同一行命令里 |
+| 几个代理各自写 shell 拿锁、放锁：把拿锁后就退出的等锁 shell 的 pid 当锁主、超时没拿到锁也开工、放锁时误删别人的锁、忘了放锁；按进程名判活时，把同一行命令里的 `manim -qm` 当成活进程 | 不自己写：`render.mjs` 自带锁，Manim 等用 `render_lock.py run` 包一层；拿锁、放锁在同一个进程里，按持锁进程的 pid 判活 |
 | `audio_timeline.py` 按文件名 stem 建键，同一拍同时有 `.mp3` 与 `.wav` 时会撞键，丢掉垫音（曾有一拍因此丢了 8 秒多的垫音） | 已修：同一拍号有多个格式时脚本只用 `.wav` 并警告；仍建议删掉多余的 `.mp3` |
 | TTS 文本触发型缺陷：某句旁白在固定位置截断、后半句重复（如旁白「第六，运行时自检」在固定位置截断后重复数次）；同句重录、换写法仍在同一点截断 | 不要原句重试；把这拍拆成两拍或改写法。`audio_timeline.py` 的配音检查会把这类拍标成“疑似重复/多读”（有声段语速明显偏慢） |
 | 嵌套数组当子节点：`rows.map(row => row.map(...))` 双重嵌套数组传给 fragment 的 children，里层数组被静默丢掉、整行元素不渲染（曾因此丢了一张表的整行）；QA 只检查文字是否出现、检不出“该出现却没出现” | 用 `flatMap` 展平再传；逐拍看全分辨率帧时核对每张表/每组元素的行数与原文一致 |
