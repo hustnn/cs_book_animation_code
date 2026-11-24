@@ -13,6 +13,8 @@
   --all        全部重渲（改了 render.mjs、headless.ts 这类不被场景 import 的文件时用）
   --no-render  不渲染；报告缺失或比代码旧的场景记为未通过
   --port / --timeout  传给 render.mjs（默认 9000 / 每个场景 600 秒）
+  --lock-timeout      每个场景等渲染锁最多多少分钟（默认 90）。render.mjs 每渲一个场景拿一次锁，别的单元的渲染
+                      可以插在两个场景之间，不会被一次整章 QA 堵住；等锁超时就停下，剩下的场景记为未渲染
   --md / --json  汇总写到哪里（默认 <工程>/output/qa-summary.md、qa-summary.json）
   --strict     门槛没过时退出码为 1
 
@@ -126,7 +128,10 @@ def stale(scene: Path, report: Path) -> bool:
     return json.loads(side.read_text(encoding="utf-8")) != fingerprint(scene)
 
 
-def render(project: Path, name: str, port: str, timeout: int):
+LOCK_TIMEOUT_EXIT = 3  # render.mjs：等渲染锁超时，没有渲染
+
+
+def render(project: Path, name: str, port: str, timeout: int, lock_timeout: float):
     out = project / "output"
     out.mkdir(exist_ok=True)
     report, log = out / f"{name}.qa.json", out / f"{name}.qa.log"
@@ -135,8 +140,10 @@ def render(project: Path, name: str, port: str, timeout: int):
     with open(log, "w", encoding="utf-8") as fh:
         try:
             code = subprocess.run(
-                ["node", "scripts/render.mjs", name, "--qa", "--port", port, "--timeout", str(timeout)],
-                cwd=project, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=timeout + 180,
+                ["node", "scripts/render.mjs", name, "--qa", "--port", port, "--timeout", str(timeout),
+                 "--lock-timeout", f"{lock_timeout:g}"],
+                cwd=project, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                timeout=timeout + lock_timeout * 60 + 180,
             ).returncode
         except subprocess.TimeoutExpired:
             code = "超时"
@@ -259,6 +266,7 @@ def main():
     ap.add_argument("--no-render", action="store_true", help="不渲染，只汇总已有报告")
     ap.add_argument("--port", default="9000")
     ap.add_argument("--timeout", type=int, default=600, help="单个场景的渲染超时（秒）")
+    ap.add_argument("--lock-timeout", type=float, default=90, help="每个场景等渲染锁最多多少分钟")
     ap.add_argument("--md", type=Path)
     ap.add_argument("--json", type=Path)
     ap.add_argument("--strict", action="store_true", help="门槛没过时退出码为 1")
@@ -294,10 +302,16 @@ def main():
     for i, row in enumerate(todo, 1):
         print(f"[{i:>2}/{len(todo)}] {row['name']} 渲染中…", end="", flush=True)
         before = fingerprint(Path(row["file"]))
-        ok, spent, code = render(project, row["name"], a.port, a.timeout)
+        ok, spent, code = render(project, row["name"], a.port, a.timeout, a.lock_timeout)
         row.update(rendered=True, renderSeconds=round(spent, 1))
         if ok and fingerprint(Path(row["file"])) == before:  # 渲染期间文件被改过就不记，下次照样重渲
             (out / f"{row['name']}.qa.deps.json").write_text(json.dumps(before, indent=1), encoding="utf-8")
+        if code == LOCK_TIMEOUT_EXIT:
+            print(f" 等渲染锁超时（{a.lock_timeout:g} 分钟），停止渲染：锁在谁手里见 output/{row['name']}.qa.log，"
+                  f"或 python {Path(__file__).parent / 'render_lock.py'} status")
+            for rest in todo[i - 1:]:
+                rest.update(status="渲染失败", note="等渲染锁超时，没有渲染", rendered=False)
+            break
         if not ok:
             row["status"] = "渲染失败"
             row["note"] = f"render.mjs 退出码 {code}，日志 output/{row['name']}.qa.log"

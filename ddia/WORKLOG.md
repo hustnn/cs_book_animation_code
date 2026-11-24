@@ -302,3 +302,26 @@ ddia-animation-demo/
   “不要做的事”加“不只读图注、不贴原图截图”；failure-modes 第 24 条；templates 加 figures.md 模板和处置表，示例单元补处置表。
 - **对本项目**：`ddia/figures.md` 已经是第 0 步的产物，后续章节直接用；从第 2 章起 inventory 要带图表处置表。
 
+## 15. 渲染锁做进 skill（2026-11-24，skill v1.7.0）
+
+- **原因**：第 2 章几个代理并行做不同单元，为了不同时渲染、抢内存，各自写 shell 拿锁、放锁，出过几类事故：
+  把拿锁后就退出的等锁 shell 的 pid 当成锁主（U4 错拿 U3 的锁）、超时没拿到也开工、放锁误删别人的锁、
+  放锁时路径写错或探针 shell 先退出而忘了放锁（U10、U11）。PR #12 的 `render-lock.sh` 修了前三类，
+  但放在章节目录里（每章抄一份、每章一把锁，两章同时做时拦不住），拿锁、放锁仍是两次调用，崩了要等 120 分钟才算死锁。
+- **做法**：锁做进 skill，整台机器一把（默认 `/tmp/textbook-to-animation.render-lock`）：
+  `render.mjs` 自己拿锁、渲完（出错、被 Ctrl+C 也一样）放锁，`qa_chapter.py` 因此逐个场景各拿一次；
+  Manim 等其他重活用新增的 `scripts/render_lock.py run <名字> -- <命令>`（拿锁、跑命令、放锁在同一个进程里）。
+  持锁的是真正在渲染的进程，锁里记它的 pid，进程不在了下一个等锁的自动清；等锁超时退出码 3、不渲染。
+  两边（Node、Python）同一套协议，嵌套调用不会自己等自己。顺带：`render.mjs` 加 `--help`，不认识的参数报错退出
+  （原先 `--help` 会被跳过、场景名为空，直接渲染整个工程）。
+- **验证**：自检新增 17 条（排队、超时不运行、死锁自动清、不删活锁、嵌套、被 kill 放锁、两边互认、render.mjs 拿不到锁不渲染、
+  `--help` / 未知参数、渲完放锁），全量 50/50；7 处故意改坏都能被测出来。第 1 章两个场景端到端：别人持锁时
+  `qa_chapter --lock-timeout 0.05` 4 秒停下、两个场景记为“等渲染锁超时”；默认设置排队等到放锁后渲完、门槛通过、锁已放。
+  `ch01`、`ch02` 工程的 `scripts/` 已同步 `render.mjs` 和新的 `render-lock.mjs`。
+- **并入 PR #12（PR #12 关闭）**：PR #12 里还有效的三条搬进这里：skill `motion-canvas.md` §6 混流示例去掉 `-shortest`
+  并加一行说明；`SETUP.md` 加“渲染后必查落盘完整性”“混流默认不加 `-shortest`”“qa_chapter 只认带指纹的报告”。
+  它的 `render-lock.sh`、改写的锁规则、“render.mjs 没有 `--help`”一句被上面取代，没有搬。`SETUP.md` 的锁规则改指向
+  skill 的锁，删掉“Manim 不要和 Motion Canvas 写在同一行命令里”（新锁按 pid 判活，不看进程名），Manim 命令改用 `render_lock.py run`。
+- **未做**：第 3 章本地还在用旧的 `render.mjs` 和 `render-lock.sh`（每章一把锁），换成 skill 的 `render.mjs` + `render-lock.mjs`
+  之前，第 3 章的渲染和第 1、2 章互不排队；第 3 章代码推上来前要换掉。
+
