@@ -14,6 +14,9 @@
   另开一个没有这段对话上下文的会话或子代理（例如 Agent 工具新开一个 general-purpose 代理），只给它 prompt.md 的内容
   和 prompt.md 里列出的图片路径——不给原书、inventory、design、分镜。把它的回答原样贴进 answers.md，再逐题判定。
   做视频的人自己代入新手作答不算：你知道答案，看不出画面哪里没讲清。
+
+门槛：这个单元在 design.md 里的检查（check_design.py）有 FAIL 时不出题包、退出码 2——没有 [走查] 题、没有机制走查表，
+新手测试测不出“机制讲没讲透”。
 """
 import argparse
 import json
@@ -22,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_design import bullet_block, units  # noqa: E402
+from check_design import bullet_block, check_unit, units  # noqa: E402
 
 RULES = """# 新手测试
 
@@ -59,6 +62,13 @@ def main():
     if len(hits) != 1:
         sys.exit(f"--unit “{a.unit}” 在 design.md 里匹配到 {len(hits)} 个单元：{[t for t, _ in hits]}")
     title, body = hits[0]
+    fails = [f"{item}：{note}" for level, item, note in check_unit(title, body, None) if level == "FAIL"]
+    if fails:
+        print(f"{title} 的教学设计检查没过，不出题包：")
+        for f in fails:
+            print(f"  [FAIL] {f}")
+        print("先改 design.md（照 examples/lsm/design.md），让 check_design.py 没有 FAIL")
+        sys.exit(2)
     goals = goals_of(body)
     if not goals:
         sys.exit(f"单元 {title} 的学习目标是空的：先把题写进 design.md")

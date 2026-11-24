@@ -21,7 +21,7 @@
 | 静态检查 | 渲染前 | `lint_scenes.py` | 并行补间冲突（含同一拍几个 `at()` 补间同一对象，warn）、书页/图号/内部编号、两份时间轴不一致、文字卡和超宽 |
 | 渲染检查 | 渲染时 | `qa_chapter.py`（逐场景 `render.mjs --qa`，规则在 `lib/qa.ts`） | 文字被压、被线穿过、骑边、互叠、出画；标签先于它说明的对象出现（orphan）；动画超过旁白（overrun）；动画做完后静止过久（idle）；主角移动过快（fast-move，warn） |
 | 实测 | 渲染后 | `sample_frames.py` | 每拍抽帧供人看；freezedetect 测画面真实定格 |
-| 设计检查 | 写完 design.md | `check_design.py` | P0 机制超过密度上限、没有 [走查] 题、图式没填、机制走查太短、深度延伸没写依据 |
+| 设计检查 | 写完 design.md；之后每次 `qa_chapter.py` 渲染前、`newbie_pack.py` 出题前自动再查 | `check_design.py` | P0 机制超过密度上限、没有 [走查] 题、图式没填、机制走查太短、深度延伸没写依据。没过就不渲染（退出码 2）、不出题包 |
 
 规则都按“与具体教材无关的视觉规则”写，靠第 6 节的测试用例保证这一点。
 
@@ -83,6 +83,7 @@
 ## 4. 自检循环：每个场景写完怎么走
 
 ```
+design.md 过 check_design.py（qa_chapter 渲染前会再查，没过直接停）
 写场景（用 attach / row / edgePointIn / at 写）
   → npx tsc --noEmit
   → lint_scenes.py --timeline-dir … --narration …       有 FAIL → 按第 5 节修 → 回到 lint

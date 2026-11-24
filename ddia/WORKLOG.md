@@ -389,3 +389,20 @@ ddia-animation-demo/
   用 conda-forge 建的隔离环境（在会话临时目录，不入库）。机器上没有 Noto Sans CJK，Manim 关键帧是回退字体渲的。
   `SETUP.md`、skill `manim.md` 都写了这几条。
 - **下一步**：Muse 按 v1.9 重做第 3 章——先改 design.md 让 `check_design.py` 通过，再分镜、场景。
+
+## 18. 教学设计检查改成硬门槛（2026-11-24，skill v1.10.0）
+
+- **原因**：v1.9 里 `check_design.py` 只靠 SKILL.md 的规定和审查清单约束，后面的脚本不会因为 design.md 没过就拒绝运行；
+  Muse 跳过这一步，要到审查时才会被发现。用户要求做成流程里的硬门槛。
+- **做法**：
+  - `qa_chapter.py` 渲染前先过教学设计门槛：在工程上一级目录（章节目录）里找 `design.md` / `*-design.md`（深两层），
+    跑 `check_design.py`；有 FAIL、找不到、找到多份都直接停下、不渲染，退出码 2，并列出 FAIL。`--design` 指定文件，
+    `--design-beats` 顺带核对拍号，`--no-design` 跳过（只给不讲机制的工程和已定稿的旧章节用，汇总里写明“已跳过”）。
+    门槛通过时汇总第一行写“教学设计检查：通过（路径）”。
+  - `newbie_pack.py`：这个单元的设计检查有 FAIL 就不出题包（退出码 2）。
+  - `examples.py` 渲染示例时用示例自己的 design.md（没有就 `--no-design`），不拿宿主工程那一章的设计卡示例；
+    `qa_selftest.py` 渲染测试场景时用 `--no-design`。
+- **验证**：`qa_selftest.py` 新增 7 条（找不到 / 自动找到并放行 / 找到两份 / 坏设计列出 9 条 FAIL / `--no-design` /
+  没过时不渲染且退出码 2 / `newbie_pack` 没过不出题包）；第 3 章现有设计跑 `qa_chapter.py`：停在渲染前、列出 48 条 FAIL。
+- **对已有章节的影响**：第 1、2 章已定稿、设计早于这套结构，重跑 `qa_chapter.py` 要加 `--no-design`（`SETUP.md` 已写）；
+  第 3 章重做时不加，先把 design.md 改到检查通过。

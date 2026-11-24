@@ -3,7 +3,7 @@ name: textbook-to-animation
 description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计（含机制图式：数据有身份、会移动，不是框和线）、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及教学设计检查、静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查；自带示例（一个完整单元和两个工具的技法图库）可直接渲染参照。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.9.0"
+  version: "1.10.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -42,7 +42,7 @@ metadata:
 
 | 步骤 | 照着写（示例） | 写完跑 |
 |---|---|---|
-| 2 教学设计 | `examples/lsm/design.md` | `scripts/check_design.py design.md --beats-json beats.json`：FAIL 清零才进第 3 步 |
+| 2 教学设计 | `examples/lsm/design.md` | `scripts/check_design.py design.md --beats-json beats.json`：FAIL 清零才进第 3 步（`qa_chapter.py` 渲染前会再查一次，没过直接停、不渲染） |
 | 3 分镜 | `examples/lsm/beats.md` | 只读画面列做空框测试 |
 | 6 选画面手段、写场景 | `references/techniques.md` 按场景反查技法；`examples/mc-gallery/`、`examples/manim-gallery/`、`examples/lsm/scenes/` 的代码 | `lint_scenes.py`（含“画面手段”报告）、`qa_chapter.py` |
 | 7 新手测试 | design.md 里的学习目标 | `scripts/newbie_pack.py` 出题包，交给没有上下文的会话作答 |
@@ -180,6 +180,8 @@ design.md 照 `references/templates.md` 的模板写，完整样本是 `examples
 
 **门槛：** `check_design.py` 没有 FAIL（P0 机制 ≤ 3、有 [走查] 题、图式四问都填了、每个 P0 机制的走查 ≥ 3 步且 ≥ 4 拍、
 深度延伸都有依据）；每条 P0 都有画面动作，每条 P1 都有承载的拍；单元之间没有重复的结论句。
+这道门槛是硬的：`qa_chapter.py` 每次渲染前都重跑它，没过就停下、不渲染（退出码 2）；`newbie_pack.py` 对没过的单元不出题包。
+所以跳过这一步、或者改坏了 design.md，后面的渲染和新手测试都走不下去。
 
 ### 3. 分镜（beats.md）——旁白先行
 
@@ -256,6 +258,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
   另列“画面手段”：每个场景用到了哪些技法，只用了框、线、文字的场景记 warn（讲机制的场景要回去选图式、挑技法）。
 - 渲染：MC 用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`，一条命令把这一章的场景逐个用 `--qa` 渲染并汇总；
   默认只重渲改过的场景（场景文件或它 import 的 lib、组件、时间轴内容变了才重渲），修完再跑一遍很快。
+  **渲染前先过教学设计门槛**：它在工程上一级目录里找 `design.md` / `*-design.md`（找不到或找到多份时用 `--design` 指定），
+  跑 `check_design.py`，有 FAIL 就停下、不渲染。不讲机制的工程、或设计早于 v1.9 结构的已定稿章节，用 `--no-design` 跳过（汇总里会写明）。
   单个场景也可以在 `motion-canvas/` 下 `node scripts/render.mjs <场景名> --qa`。
   Manim 用 `python <skill>/scripts/render_lock.py run <单元> -- manim -qm <文件> <场景类>`。
   **渲染锁**：整台机器同一时间只跑一个渲染（几个代理并行做不同单元时排队，不抢内存、不抢 Chrome）。
@@ -322,7 +326,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | 每拍最长定格（画面整体实测） | < 6s（≥ 3s 要说明理由；对小物体的慢移动不敏感，以 idle 为准） | `sample_frames.py` |
 | 配音疑似重复/多读 | 0 | `audio_timeline.py` |
 | P0 要点 | 100% 有画面动作 |
-| 教学设计结构（P0 机制 ≤ 3、[走查] 题、图式四问、走查 ≥ 3 步 ≥ 4 拍、延伸有依据） | 0 FAIL | `check_design.py` |
+| 教学设计结构（P0 机制 ≤ 3、[走查] 题、图式四问、走查 ≥ 3 步 ≥ 4 拍、延伸有依据） | 0 FAIL；没过不渲染、不出新手测试题包 | `check_design.py`（`qa_chapter.py`、`newbie_pack.py` 自动再查） |
 | 单元密度 | 每单元 P0 机制 ≤ 3 个；每个 P0 机制有具体数据的走查，≥ 4 拍 | `check_design.py`、忠实审 |
 | 画面手段 | 讲机制的场景不只用框、线、文字 | lint 的“画面手段”（warn，观感审逐条看） |
 | 原文之外的内容 | 100% 进清单；深度延伸写明依据，画面标注“延伸 · 原文之外”或“示意” | 忠实审 |
@@ -341,6 +345,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - 不要用 Motion Canvas 的 `Camera` 组件推镜头：用 `Cam` 缩放 world 节点（QA 才看得见）。
 - 不要自己代入新手做新手测试：交给没有上下文的会话或真人。
 - 不要只读规则不看示例：设计、分镜、场景动笔前先看 `examples/` 里对应的那份，照它的结构写。
+- 不要用 `--no-design` 绕过正在做的章节：它只给不讲机制的工程和已定稿的旧章节用。设计检查没过，就回第 2 步改 design.md。
 - 不要追加补丁段：要么重写这个单元的叙事，要么把内容编织进已有的拍。
 - 不要按模板给固定时长：时长由旁白决定。
 - 不要把工作备注、页码指引放上画面。
@@ -372,7 +377,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | `references/review-rubric.md` | 第 7 步：四道审查的完整清单、每轮流程、轮次对比和报告模板 |
 | `references/templates.md` | inventory / design / beats / timeline / 轮次快照的空白模板 |
 | `references/example-unit.md` | 完整示例：一节内容 → 要点清单 → 两个学习单元的设计和分镜 |
-| `scripts/check_design.py` | 第 2 步写完 design.md：P0 机制密度、[走查] 题、图式四问、机制走查表、深度延伸依据 |
+| `scripts/check_design.py` | 第 2 步写完 design.md：P0 机制密度、[走查] 题、图式四问、机制走查表、深度延伸依据（`qa_chapter.py`、`newbie_pack.py` 会自动再查） |
 | `scripts/newbie_pack.py` | 第 7 步：新手测试题包（旁白 + 联系表 + 学习目标题）和记录模板 |
 | `scripts/examples.py` | 渲染示例看成片（临时装进工程、带 QA、结束清理）；`check` 把示例当回归用例跑；`frames` 抽关键帧 |
 | `scripts/lint_scenes.py` | 渲染前的静态检查：门槛、并行补间冲突、书页/图号/内部编号、时间轴副本、画面手段 |

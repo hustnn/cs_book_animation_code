@@ -182,7 +182,8 @@ Motion Canvas 3.x 没有官方渲染 CLI。本 skill 的做法：Vite dev server
 
 报告写到 `output/<场景名>.qa.json`，并在终端列出前 40 条（拍号、时刻、哪段文字、和哪个图形）。`--strict` 时有 error 退出码为 2。
 
-整章一起查用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`：逐个场景 `--qa` 渲染（默认只重渲内容改过的场景），
+整章一起查用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`：先过教学设计门槛
+（自动找章节目录里的 design.md 跑 `check_design.py`，没过就停、不渲染；`--design` 指定、`--no-design` 跳过），再逐个场景 `--qa` 渲染（默认只重渲内容改过的场景），
 汇总写到 `output/qa-summary.md` / `.json`——门槛结论、每个场景一行、要修的 error 清单（按场景、时刻排好）、
 静止 3–6s 的拍、没有用 `beat()` 计时因而查不到的场景。场景名单取 `project.ts` 里登记过的；
 目录里有像场景却没登记的文件会被报出来（render.mjs 渲染不了它们）。

@@ -17,8 +17,14 @@
                       可以插在两个场景之间，不会被一次整章 QA 堵住；等锁超时就停下，剩下的场景记为未渲染
   --md / --json  汇总写到哪里（默认 <工程>/output/qa-summary.md、qa-summary.json）
   --strict     门槛没过时退出码为 1
+  --design PATH        这一章的教学设计（默认在工程上一级目录里找 design.md / *-design.md，深两层）
+  --design-beats PATH  给 check_design.py 核对拍号用的 beats.json（可选）
+  --no-design          不查教学设计：不讲机制的工程，或设计早于 skill v1.9 结构的已定稿章节；汇总里会写明跳过了
 
-门槛：选中的场景都有最新的报告（渲染成功）、error 总数为 0。
+教学设计门槛（先于渲染）：渲染前先对 design.md 跑 check_design.py。没过（有 FAIL）、找不到、找到不止一份，
+都直接停下、不渲染，退出码 2——机制没设计清楚，渲染出来的画面也要推倒重做。SKILL.md 第 2 步的门槛就是它。
+
+渲染门槛：选中的场景都有最新的报告（渲染成功）、error 总数为 0。
 汇总里另列：idle warn（动画做完后静止 3–6s 的拍，人工审查时要逐条说得出理由）、fast-move warn（看得清的文字
 一次移动不到 0.5s 就走了 ≥ 150px，观众跟不上，逐条看一眼是不是机制的主角）、各类 warn 的条数、
 没有用 beat() 计时的场景（QA 查不到，标为“未覆盖”，要人工看帧）。Manim 段不在范围内。
@@ -34,6 +40,45 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
+
+CHECK_DESIGN = Path(__file__).resolve().parent / "check_design.py"
+DESIGN_EXIT = 2
+
+
+def find_design(project: Path):
+    """工程上一级（章节目录）里的 design.md / *-design.md，最多深两层。"""
+    chapter = project.parent
+    pats = ("design.md", "*-design.md", "*/design.md", "*/*-design.md")
+    return sorted({p.resolve() for pat in pats for p in chapter.glob(pat) if "node_modules" not in p.parts})
+
+
+def design_gate(project: Path, design=None, beats=None, skip=False) -> dict:
+    """教学设计门槛：{status: pass / fail / missing / ambiguous / skipped, path, fails, note}。"""
+    if skip:
+        return {"status": "skipped", "note": "用 --no-design 跳过"}
+    if design is None:
+        hits = find_design(project)
+        if not hits:
+            return {"status": "missing", "note": f"{project.parent} 下找不到 design.md / *-design.md：用 --design 指定"}
+        if len(hits) > 1:
+            return {"status": "ambiguous", "candidates": [str(h) for h in hits],
+                    "note": f"找到 {len(hits)} 份设计：用 --design 指定这一章用的是哪一份"}
+        design = hits[0]
+    design = Path(design)
+    if not design.exists():
+        return {"status": "missing", "note": f"{design} 不存在"}
+    cmd = [sys.executable, "-I", str(CHECK_DESIGN), str(design)] + (["--beats-json", str(beats)] if beats else [])
+    r = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    fails, unit = [], ""
+    for ln in r.stdout.splitlines():
+        if ln.startswith("## "):
+            unit = ln[3:].strip()
+        elif "[FAIL]" in ln:
+            fails.append(f"{unit}：{ln.split('[FAIL]', 1)[1].strip()}")
+    if r.returncode == 0:
+        return {"status": "pass", "path": str(design), "fails": [], "note": r.stdout.strip().splitlines()[-1] if r.stdout else ""}
+    return {"status": "fail", "path": str(design), "fails": fails, "note": (r.stderr or r.stdout).strip()[-300:] if not fails else ""}
+
 
 IMPORT = re.compile(r"""(?:\bfrom|\bimport)\s*['"](\.{1,2}/[^'"]+)['"]""")
 EXTS = ["", ".ts", ".tsx", ".js", ".jsx", ".json", "/index.ts", "/index.tsx"]
@@ -167,7 +212,7 @@ def cell(s) -> str:
     return str(s).replace("|", "\\|").replace("\n", " ")
 
 
-def build(project, rows, findings_by_scene):
+def build(project, rows, findings_by_scene, design=None):
     errors, idle, fast, warn_kinds = [], [], [], Counter()
     for r in rows:
         for f in findings_by_scene.get(r["name"], []):
@@ -189,6 +234,8 @@ def build(project, rows, findings_by_scene):
         reasons.append(f"{len(bad)} 个场景没有最新的报告：{', '.join(bad)}")
     if errors:
         reasons.append(f"{len(errors)} 条 error")
+    if design and design["status"] not in ("pass", "skipped"):
+        reasons.append("教学设计检查没过")
     return {
         "generated": datetime.datetime.now().isoformat(timespec="seconds"),
         "project": str(project),
@@ -200,7 +247,18 @@ def build(project, rows, findings_by_scene):
         "fastMove": fast,
         "warnKinds": dict(warn_kinds.most_common()),
         "uncovered": [r["name"] for r in rows if r["status"] == "未覆盖"],
+        "design": design or {"status": "skipped", "note": "没有传入"},
     }
+
+
+def design_line(d) -> str:
+    d = d or {}
+    st = d.get("status")
+    if st == "pass":
+        return f"教学设计检查：通过（{d.get('path')}）"
+    if st == "skipped":
+        return f"教学设计检查：**已跳过**（{d.get('note', '')}）——审查时确认这一章确实不需要"
+    return f"教学设计检查：**未通过**（{d.get('note') or '；'.join(d.get('fails', [])[:5])}）"
 
 
 def markdown(s, limit=None) -> str:
@@ -213,6 +271,8 @@ def markdown(s, limit=None) -> str:
         f"场景 {len(rows)} 个：本次渲染 {rendered} 个，沿用已有报告 {reused} 个，未覆盖 {len(s['uncovered'])} 个。",
         "",
         ("结论：**通过**（error 为 0，可以进入人工审查）" if s["gate"] else "结论：**未通过**——" + "；".join(s["reasons"])),
+        "",
+        design_line(s.get("design")),
         "",
         "## 各场景",
         "",
@@ -289,10 +349,32 @@ def main():
     ap.add_argument("--md", type=Path)
     ap.add_argument("--json", type=Path)
     ap.add_argument("--strict", action="store_true", help="门槛没过时退出码为 1")
+    ap.add_argument("--design", type=Path, help="教学设计 design.md（默认在工程上一级目录里找）")
+    ap.add_argument("--design-beats", type=Path, help="核对拍号用的 beats.json")
+    ap.add_argument("--no-design", action="store_true", help="不查教学设计（汇总里写明跳过）")
     a = ap.parse_args()
     if a.all and a.no_render:
         ap.error("--all 和 --no-render 不能同时用")
     project = a.project.resolve()
+
+    # 教学设计门槛：先于渲染。没过就停——机制没设计清楚，渲染出来也要重做
+    design = design_gate(project, a.design, a.design_beats, a.no_design)
+    if design["status"] not in ("pass", "skipped"):
+        print(f"教学设计检查没过，不渲染（{design.get('path') or ''}）：")
+        fails = design.get("fails", [])
+        for f in fails[:30]:
+            print(f"  [FAIL] {f}")
+        if len(fails) > 30:
+            print(f"  …… 共 {len(fails)} 条 FAIL（完整列表：python {CHECK_DESIGN} {design.get('path')}）")
+        if design.get("note"):
+            print(f"  {design['note']}")
+        for c in design.get("candidates", []):
+            print(f"  候选：{c}")
+        print("先按 examples/lsm/design.md 的结构改 design.md，直到 check_design.py 没有 FAIL；"
+              "不讲机制的工程或已定稿的旧章节用 --no-design。")
+        sys.exit(DESIGN_EXIT)
+    print(design_line(design))
+
     if not (project / "scripts" / "render.mjs").exists():
         sys.exit(f"{project} 下没有 scripts/render.mjs：--project 要指向 Motion Canvas 工程目录")
 
@@ -357,7 +439,7 @@ def main():
             errorKinds=dict(Counter(f["kind"] for f in errs).most_common()),
         )
 
-    summary = build(project, rows, findings)
+    summary = build(project, rows, findings, design)
     md_path = a.md or out / "qa-summary.md"
     json_path = a.json or out / "qa-summary.json"
     md_path.parent.mkdir(parents=True, exist_ok=True)

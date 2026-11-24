@@ -282,6 +282,48 @@ def check_design():
     return rows
 
 
+def check_design_gate():
+    """qa_chapter.py 的教学设计门槛：好设计放行；坏设计、找不到、找到两份都拦下（不渲染）；--no-design 放行但标“跳过”。"""
+    sys.path.insert(0, str(SKILL / "scripts"))
+    import qa_chapter  # noqa: E402
+    rows = []
+    good = SKILL / "examples" / "lsm" / "design.md"
+    bad = SKILL / "assets" / "design-fixtures" / "bad-design.md"
+    with tempfile.TemporaryDirectory() as tmp:
+        ch = Path(tmp) / "chapter"
+        proj = ch / "motion-canvas"
+        proj.mkdir(parents=True)
+        r = qa_chapter.design_gate(proj)
+        rows.append(("qa_chapter 设计门槛：章节目录里没有设计 → 拦下", r["status"] == "missing", f"实际 {r['status']}"))
+        (ch / "skill-ch").mkdir()
+        shutil.copy(good, ch / "skill-ch" / "ch-design.md")
+        r = qa_chapter.design_gate(proj)
+        rows.append(("qa_chapter 设计门槛：自动找到 */*-design.md，好设计放行", r["status"] == "pass", f"实际 {r}"))
+        shutil.copy(bad, ch / "design.md")
+        r = qa_chapter.design_gate(proj)
+        rows.append(("qa_chapter 设计门槛：找到两份设计 → 拦下，要求 --design", r["status"] == "ambiguous", f"实际 {r['status']}"))
+        r = qa_chapter.design_gate(proj, ch / "design.md")
+        rows.append(("qa_chapter 设计门槛：坏设计 → 拦下并列出 FAIL", r["status"] == "fail" and len(r["fails"]) == 9,
+                     f"实际 {r['status']}，{len(r.get('fails', []))} 条"))
+        r = qa_chapter.design_gate(proj, skip=True)
+        rows.append(("qa_chapter 设计门槛：--no-design 放行、标为跳过", r["status"] == "skipped", f"实际 {r['status']}"))
+        run = subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "qa_chapter.py"), "--project", str(proj),
+                              "--design", str(ch / "design.md"), "--no-render"],
+                             capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        rows.append(("qa_chapter 设计没过时不渲染、退出码 2", run.returncode == 2 and "不渲染" in run.stdout,
+                     f"退出码 {run.returncode}"))
+        nb = SKILL / "scripts" / "newbie_pack.py"
+        beats = SKILL / "examples" / "lsm" / "beats.json"
+        bad_run = subprocess.run([sys.executable, "-I", str(nb), "--design", str(bad), "--unit", "单元 B", "--narration", str(beats),
+                                  "-o", str(Path(tmp) / "nb-bad")], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        good_run = subprocess.run([sys.executable, "-I", str(nb), "--design", str(good), "--unit", "LSM", "--narration", str(beats),
+                                   "-o", str(Path(tmp) / "nb-good")], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        rows.append(("newbie_pack：单元设计没过不出题包（退出码 2），过了才出", bad_run.returncode == 2
+                     and not (Path(tmp) / "nb-bad" / "prompt.md").exists() and good_run.returncode == 0
+                     and (Path(tmp) / "nb-good" / "prompt.md").exists(), f"退出码 {bad_run.returncode} / {good_run.returncode}"))
+    return rows
+
+
 def verdict(expect, findings):
     errors = [f for f in findings if f["severity"] == "error"]
     if expect == "clean":
@@ -339,7 +381,7 @@ def check_qa(project: Path, port: str, keep: bool):
         with tempfile.TemporaryDirectory() as tmp:
             summary_path = Path(tmp) / "summary.json"
             run = subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "qa_chapter.py"), "--project", str(project),
-                                  "qa-fixture", "--all", "--port", port, "--json", str(summary_path),
+                                  "qa-fixture", "--all", "--no-design", "--port", port, "--json", str(summary_path),
                                   "--md", str(Path(tmp) / "summary.md")],
                                  capture_output=True, text=True, timeout=900, stdin=subprocess.DEVNULL)
             report_path = project / "output" / "qa-fixture.qa.json"
@@ -383,7 +425,7 @@ def main():
     if a.lock_only:
         rows = check_lock()
     else:
-        rows = check_lint() + check_design() + check_lock()
+        rows = check_lint() + check_design() + check_design_gate() + check_lock()
     if not a.lint_only and not a.lock_only:
         if not a.project:
             ap.error("渲染 QA 自检需要 --project（只测 lint 用 --lint-only）")

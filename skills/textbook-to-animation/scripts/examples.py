@@ -123,8 +123,11 @@ def render_mc(m: dict, project: Path, keep: bool, port: str):
             sys.exit("tsc 没通过，没有渲染（见上面的错误）")
         subprocess.run([sys.executable, "-I", str(SCRIPTS / "lint_scenes.py"), str(inst.scene_dir),
                         "--json", str(lint_json)], stdin=subprocess.DEVNULL)
+        # 示例带自己的 design.md（或没有）：不能拿宿主工程那一章的设计来卡示例
+        design = m["dir"] / "design.md"
+        dflags = ["--design", str(design), "--design-beats", str(m["dir"] / "beats.json")] if design.exists() else ["--no-design"]
         run = subprocess.run([sys.executable, "-I", str(SCRIPTS / "qa_chapter.py"), "--project", str(project),
-                              *m["scenes"], "--all", "--port", port, "--json", str(summary_json),
+                              *m["scenes"], "--all", *dflags, "--port", port, "--json", str(summary_json),
                               "--md", str(out / f"example-{m['name']}.qa-summary.md")], stdin=subprocess.DEVNULL)
         if not summary_json.exists():
             sys.exit(f"qa_chapter.py 没有写出汇总（退出码 {run.returncode}）")
