@@ -123,7 +123,7 @@
 
 ## 2. 唯一的正式编号表 Table 3-1
 
-- **Table 3-1. Comparing characteristics of transaction processing versus analytic systems**（PDF p117 / 书 p93，§3.7 Transaction Processing or Analytics?，PLAN 3.7）
+- **Table 3-1. Comparing characteristics of transaction processing versus analytic systems**（PDF p113 / 书 p91，§3.7 Transaction Processing or Analytics?，PLAN 3.7；2026-11-23 第 3 章清单复核纠正：原写 PDF p117 / 书 p93 是错的，实测该页页脚为“Transaction Processing or Analytics? | 91”，表后紧跟 §3.8 标题；PDF p117 是 §3.10 的页）
 - 内容（`pdftotext -layout` 抽出，列对齐完整）：
 
 | Property | Transaction processing systems (OLTP) | Analytic systems (OLAP) |
