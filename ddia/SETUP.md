@@ -64,6 +64,11 @@ cd ../manim && python -m venv .venv && .venv/bin/pip install -r requirements.txt
 # 注意：移动工程目录后需重建 venv——venv 的 bin/* shebang 写的是旧绝对路径
 ```
 
+macOS 上 `pycairo` 没有现成的 wheel，上面的 pip 会从源码编译、要求本机有 cairo 和 pkg-config。不想装系统包时用 conda-forge
+建隔离环境：`conda create -p <目录> -c conda-forge python=3.12 pycairo`，再用它的 python 装其余依赖
+（`uv pip install --native-tls --python <目录>/bin/python -r requirements.txt`；公司网络下 pip 报证书错误时 `--native-tls` 用系统证书）。
+没装 `Noto Sans CJK SC` 时 Manim 会回退到别的中文字体并刷警告，正式渲染前装好。
+
 ## 渲染
 
 ```bash

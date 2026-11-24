@@ -1,0 +1,80 @@
+{
+  "kind": "motion-canvas",
+  "summary": "完整单元示例：LSM 树的写入、读取（布隆过滤器）、两种压缩合并。设计 → 分镜 → 场景 → 自检全套，深度延伸带依据。",
+  "scenes": [
+    "lsm-write",
+    "lsm-read",
+    "lsm-compact"
+  ],
+  "timeline": "timeline.json",
+  "lib": [
+    "schemas.ts"
+  ],
+  "frames": [
+    {
+      "scene": "lsm-write",
+      "t": 35.81,
+      "name": "w06-sorted-insert"
+    },
+    {
+      "scene": "lsm-write",
+      "t": 47.44,
+      "name": "w08-overwrite"
+    },
+    {
+      "scene": "lsm-write",
+      "t": 65.27,
+      "name": "w11-flush"
+    },
+    {
+      "scene": "lsm-write",
+      "t": 83.86,
+      "name": "w14-map"
+    },
+    {
+      "scene": "lsm-read",
+      "t": 9.1,
+      "name": "r02-counter"
+    },
+    {
+      "scene": "lsm-read",
+      "t": 19.23,
+      "name": "r04-zoom-index"
+    },
+    {
+      "scene": "lsm-read",
+      "t": 53.34,
+      "name": "r10-cutaway-bloom"
+    },
+    {
+      "scene": "lsm-read",
+      "t": 63.24,
+      "name": "r12-zero-reads"
+    },
+    {
+      "scene": "lsm-compact",
+      "t": 24.56,
+      "name": "c04-dedupe"
+    },
+    {
+      "scene": "lsm-compact",
+      "t": 31.37,
+      "name": "c05-tiers"
+    },
+    {
+      "scene": "lsm-compact",
+      "t": 51.95,
+      "name": "c08-key-axis"
+    },
+    {
+      "scene": "lsm-compact",
+      "t": 68.89,
+      "name": "c11-leveled-merge"
+    },
+    {
+      "scene": "lsm-compact",
+      "t": 98.91,
+      "name": "c15-tradeoff"
+    }
+  ]
+}

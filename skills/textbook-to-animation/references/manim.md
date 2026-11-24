@@ -8,6 +8,13 @@
   - 刻度数字手写 `Text` 放在 `ax.c2p(...)` 旁边；
   - 需要真正的分式排版或逐项变形推导时，再装最小 TeX（如 TinyTeX 加 `standalone`、`preview` 两个包），不要装 texlive-full。
 - `manim checkhealth` 在没有 LaTeX 时可能挂住，可以跳过。
+- **macOS 上 `pycairo` 没有现成的 wheel**，`pip install` 会从源码编译、要求本机装了 cairo 和 pkg-config。不想动系统时，
+  用 conda-forge 建一个隔离环境装 `python=3.12 pycairo`，再用它的 pip 装 `requirements.txt` 的其余依赖。
+- 公司网络下 pip 报 `invalid peer certificate: UnknownIssuer`：用系统证书（`uv pip install --native-tls`，或 conda 设 `ssl_verify: truststore`）。
+- 中文字体：`theme.py` 用 `Noto Sans CJK SC`。机器上没有时 Pango 会回退到别的中文字体并刷 `Font … not in` 警告——能渲染，
+  但全书字体不统一，正式渲染前装好。
+- 没有 LaTeX 时这些也不能用：`MathTex` / `Tex`、`DecimalNumber`（数字走 LaTeX）、`Graph(labels=True)`、`Axes.add_coordinates()`。
+  替代写法见 `references/techniques.md` 第 4 节，`examples/manim-gallery/` 全部按这个写法做。
 
 ## 2. 场景写法：用 beat() 计时
 

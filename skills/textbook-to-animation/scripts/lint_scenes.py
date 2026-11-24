@@ -17,6 +17,8 @@
      （场景 import 的 timeline、--narration 指定的 JSON）里不出现书页、图号、“书里/原图”、内部编号；
      “p6”这类可能是页码的写法记 warn（p50/p99 等百分位不算）
   8. 时间轴副本一致（给了 --timeline-dir 时）：场景 import 的 timeline 与章节目录里那份逐个比对
+  另列“画面手段”（不计入门槛）：每个场景用到了哪些图式组件和技法（references/techniques.md），
+  只用了框、线、文字的场景记 warn——讲机制的场景先选图式，再挑技法。
   另外给出提示（不计入门槛）：sequence(0, …)、硬编码的十六进制颜色、多个列表共用 key={String(i)}。
 
 时长从哪来：
@@ -376,6 +378,33 @@ def cue_overlaps(src: str, speech: dict):
     return out
 
 
+# ---------- 画面手段 ----------
+# 按源码粗略识别用到的技法（名字与 references/techniques.md 一致），用来发现“全章只有框和线”。
+
+TECHNIQUES = [
+    ("数据块/容器", re.compile(r"new KV\(|new Slots\(")),
+    ("计数器/计量条", re.compile(r"new Counter\(|new Meter\(")),
+    ("信号/派生量", re.compile(r"createSignal\(|createComputed\(")),
+    ("Code 逐行", re.compile(r"<Code\b|new Code\(")),
+    ("reparent", re.compile(r"\.reparent\(")),
+    ("Layout 排版", re.compile(r"<Layout\b|new Layout\(|\blayout\s*:\s*true|<\w+[^>]*\slayout[\s>]")),
+    ("圆弧", re.compile(r"startAngle")),
+    ("Latex", re.compile(r"<Latex\b|new Latex\(")),
+    ("虚线流动", re.compile(r"lineDashOffset")),
+    ("沿曲线移动", re.compile(r"getPointAtPercentage")),
+    ("SVG/图片", re.compile(r"<SVG\b|new SVG\(|<Img\b|new Img\(")),
+    ("后台任务", re.compile(r"\bspawn\(|\bloop\(|\bloopFor\(")),
+    ("遮罩", re.compile(r"compositeOperation")),
+    ("推镜头", re.compile(r"new Cam\(")),
+    ("滤镜", re.compile(r"\.filters\.")),
+]
+
+
+def techniques_used(src: str):
+    code = re.sub(r"//[^\n]*", "", src)  # 注释里提到的不算
+    return [name for name, rx in TECHNIQUES if rx.search(code)]
+
+
 # ---------- 观众可见文字 ----------
 # 动画要自包含：画面和旁白里不出现书的页码、图号、“书里/原图”这类说法，也不出现内部编号（U3、b27）。
 
@@ -426,6 +455,7 @@ def lint_mc_scene(path: Path, a):
          "overflow": [], "hints": []}
     r["conflicts"] = tween_conflicts(src)
     r["cue_overlaps"] = cue_overlaps(src, load_speech(path, src))
+    r["techniques"] = techniques_used(src)
     r["visible"] = audit_source(src, MC_VISIBLE, path.name)
     r["timeline_path"] = timeline_path(path, src)
     seq0 = len(PAR_SEQ0.findall(src))
@@ -626,6 +656,21 @@ def main():
         for f, line, bid, target in overlaps:
             print(f"  [warn] {f} L{line} {bid}: {target}")
 
+    # 画面手段
+    mc_custom = [r for r in results if r["kind"] == "custom" and "techniques" in r]
+    plain = [r["file"] for r in mc_custom if not r["techniques"]]
+    if mc_custom:
+        used = sorted({t for r in mc_custom for t in r["techniques"]})
+        print(f"\n画面手段（references/techniques.md）：全部场景合计用到 {len(used)} 种"
+              + (f"：{'、'.join(used)}" if used else ""))
+        for r in mc_custom:
+            if r["techniques"]:
+                print(f"  {r['file']}: {'、'.join(r['techniques'])}")
+        if plain:
+            print(f"  [warn] {len(plain)}/{len(mc_custom)} 个场景只用了框、线、文字：{', '.join(plain[:12])}"
+                  + (" …" if len(plain) > 12 else "")
+                  + "\n         讲机制的场景先按 visual-schemas.md 选图式，再到 techniques.md 挑技法")
+
     # 观众可见文字：场景里的画面文字 + 旁白（场景 import 的 timeline、--narration）
     visible = [v for r in results for v in r.get("visible", [])]
     imported = {r["timeline_path"] for r in results if r.get("timeline_path")}
@@ -675,7 +720,7 @@ def main():
 
     if a.json:
         a.json.write_text(json.dumps({"scenes": results, "card_share": share, "conflicts": conflicts,
-                                      "cue_overlaps": overlaps,
+                                      "cue_overlaps": overlaps, "plain_scenes": plain if mc_custom else [],
                                       "visible": visible, "timeline_drift": drift,
                                       "gates": [{"name": n, "pass": ok} for n, ok, _ in gates]},
                                      ensure_ascii=False, indent=2, default=str), encoding="utf-8")

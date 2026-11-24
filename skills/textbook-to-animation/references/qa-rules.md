@@ -21,6 +21,7 @@
 | 静态检查 | 渲染前 | `lint_scenes.py` | 并行补间冲突（含同一拍几个 `at()` 补间同一对象，warn）、书页/图号/内部编号、两份时间轴不一致、文字卡和超宽 |
 | 渲染检查 | 渲染时 | `qa_chapter.py`（逐场景 `render.mjs --qa`，规则在 `lib/qa.ts`） | 文字被压、被线穿过、骑边、互叠、出画；标签先于它说明的对象出现（orphan）；动画超过旁白（overrun）；动画做完后静止过久（idle）；主角移动过快（fast-move，warn） |
 | 实测 | 渲染后 | `sample_frames.py` | 每拍抽帧供人看；freezedetect 测画面真实定格 |
+| 设计检查 | 写完 design.md | `check_design.py` | P0 机制超过密度上限、没有 [走查] 题、图式没填、机制走查太短、深度延伸没写依据 |
 
 规则都按“与具体教材无关的视觉规则”写，靠第 6 节的测试用例保证这一点。
 
@@ -131,3 +132,7 @@
 5. 把新的缺陷类型补进第 2 节的表，必要时在 `layout.ts` 里加一个让它不再发生的写法。
 
 这样规则是沿着“通用视觉规则”演进的，每次修正都留下一个回归用例，而不是按某一章的个案打补丁。
+
+**示例也是回归用例。** `examples/` 里的三个示例是“按规则做对了”的完整画面。改完规则，除了 `qa_selftest.py`，再跑
+`python <skill>/scripts/examples.py check --project <工程>`：示例必须仍然 QA 0 error、0 fast-move、lint 门槛通过、
+0 处跨 `at()` 冲突、`design.md` 通过。`check_design.py` 的反例在 `assets/design-fixtures/bad-design.md`，`qa_selftest.py` 会核对它报出的 FAIL。

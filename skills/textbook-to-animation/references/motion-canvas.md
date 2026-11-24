@@ -122,6 +122,8 @@ yield* dot().position(edgePointIn(dot(), server(), 'left', 26), 0.8);
 **本 skill 附带一组图式组件**（`assets/motion-canvas/schemas.ts`）：有身份的数据块 `KV`、槽位容器 `Slots`（有序插入时其余让位、追加）、
 计量条 `Meter`、计数器 `Counter`、比特行 `Bits` 与 `hashLines`、镜头 `Cam`、分区框 `zone` 和角标 `tag`。
 讲数据结构、存储、索引、消息这类“数据在系统里怎么变”的机制时先用它们；选哪种、怎么组合，见 `references/visual-schemas.md`。
+2d 包自带的其他手段（Code 逐行、reparent、Layout、圆弧、Latex、虚线流动、沿曲线移动、SVG、后台任务、遮罩……）
+的适用场景和最小写法见 `references/techniques.md`，每种都在 `examples/mc-gallery/` 里演过一遍。
 
 下表是系统类教材里另外值得按需实现的一组（接口仅作建议）：
 

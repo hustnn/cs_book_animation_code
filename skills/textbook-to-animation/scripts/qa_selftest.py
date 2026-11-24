@@ -258,6 +258,30 @@ def check_lint():
     return rows
 
 
+def check_design():
+    """check_design.py：完整样本（examples/lsm/design.md）全部通过；反例（design-fixtures/bad-design.md）报出预期的 FAIL。"""
+    rows = []
+    script = SKILL / "scripts" / "check_design.py"
+    ex = SKILL / "examples" / "lsm"
+    good = subprocess.run([sys.executable, "-I", str(script), str(ex / "design.md"), "--beats-json", str(ex / "beats.json")],
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    rows.append(("check_design：示例 LSM 的 design.md 全部通过", good.returncode == 0 and "[FAIL]" not in good.stdout,
+                 good.stdout[-400:]))
+    bad = subprocess.run([sys.executable, "-I", str(script), str(SKILL / "assets" / "design-fixtures" / "bad-design.md")],
+                         capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    fails, unit = set(), ""
+    for ln in bad.stdout.splitlines():
+        if ln.startswith("## 单元 "):
+            unit = ln[len("## 单元 "):][:1]
+        elif "[FAIL]" in ln:
+            fails.add(f"{unit}:{ln.split('[FAIL]')[1].split('：')[0].strip()}")
+    want = {"A:P0 机制", "A:机制走查 · 写入", "A:机制走查 · 读取", "A:机制走查 · 合并", "A:机制走查 · 分区",
+            "B:走查题", "B:图式", "C:机制走查 · 页分裂", "C:深度延伸"}
+    rows.append(("check_design：反例报出的 FAIL 与预期一致（密度、走查题、图式、走查长度、延伸依据；小结单元不查）",
+                 bad.returncode == 1 and fails == want, f"多 {sorted(fails - want)}，少 {sorted(want - fails)}"))
+    return rows
+
+
 def verdict(expect, findings):
     errors = [f for f in findings if f["severity"] == "error"]
     if expect == "clean":
@@ -359,7 +383,7 @@ def main():
     if a.lock_only:
         rows = check_lock()
     else:
-        rows = check_lint() + check_lock()
+        rows = check_lint() + check_design() + check_lock()
     if not a.lint_only and not a.lock_only:
         if not a.project:
             ap.error("渲染 QA 自检需要 --project（只测 lint 用 --lint-only）")

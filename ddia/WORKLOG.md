@@ -357,3 +357,35 @@ ddia-animation-demo/
   - 演示拍：样片 r9 加 `"hold": 2.5`，timeline 与拼出的音轨都是 258.64s（原 256.14s），静音插在 r9 之后。
 - **工程同步**：`ch03/motion-canvas/src/lib/` 换上新的 `qa.ts`、`beats.ts`，加 `schemas.ts`；`ch01`、`ch02` 已定稿，没换（换了会让 qa_chapter 全部重渲）。
 - **下一步**：Muse 按 v1.8 重做第 3 章（r2），配正式音色。
+
+## 17. 示例进 skill、两个工具的技法图库、设计检查（2026-11-24，skill v1.9.0）
+
+- **原因**：用户看过 v1.8 后提了三点：LSM 样片应该作为 skill 的示例给 Muse 参照；要深挖两个库的丰富用法，写进 skill、
+  说明适合什么场景，并用示例演示出来；要确认“深度不够”等反馈落到了 skill 上，把说明（instruction）、示例（example）和
+  校验结合起来，让 Muse 后续真的照做。
+- **示例**（`skills/textbook-to-animation/examples/`）：
+  - `lsm/`：样片从第 3 章挪进 skill（第 3 章工程和 `skill-ch03/sample-lsm/` 里的副本删掉），补了按模板写的 `design.md`
+    （P0 机制、[走查] 题、图式四问、三张机制走查表、深度延伸及依据）和 42 拍的 `beats.md`（每拍标图式），`README.md` 写
+    原文讲到哪、视频讲到哪、图式 → 拍 → 代码，`frames/` 13 张关键帧。时间轴改名 `example-lsm.json`，装进任何工程都不会撞名。
+  - `mc-gallery/`：Motion Canvas 技法图库，2 个场景 21 拍，13 种技法，每种配一个真实的小机制：二分查找（Code 逐行 + 信号指针）、
+    B+ 树页分裂（reparent + 端点绑定节点的连线）、表插入删除（Layout 只补间尺寸）、一致性哈希加节点（createComputed + 圆弧）、
+    取模对比（Latex，MathJax 自带）、主从复制延迟（虚线流动 + 逐字打出）、请求往返（沿曲线移动 + 本地 SVG 图标）、
+    队列积压（spawn / cancel + loop + 派生位置）、范围扫描（遮罩聚光）。
+  - `manim-gallery/`：Manim 技法图库，3 个场景 9 拍，只用 Pango Text：尾延迟放大（ValueTracker + always_redraw、
+    TransformMatchingShapes、MovingCameraScene）、流言式广播（Graph、MoveAlongPath、ShowPassingFlash）、百分位（排序动画、Table）。
+- **说明**：新增 `references/techniques.md`——按教学场景反查技法；每种技法的样子、适合 / 不适合、最小写法、在哪个示例的哪一拍；
+  做示例时踩过的坑。`visual-schemas.md` 第 6、8 节改为指向它和 `examples/lsm/`。SKILL.md 新增“示例与检查”一节，
+  第 2、3、6、7 步各挂上要照着写的示例和写完要跑的检查；门槛表、文件索引、描述同步。
+- **校验**：
+  - `check_design.py`：design.md 的结构检查（P0 机制 ≤ 3、有 [走查] 题、图式四问、每个机制的走查 ≥ 3 步且 ≥ 4 拍、深度延伸写了依据、
+    拍号在 beats.json 里）；模板改成它能解析的结构；反例 `assets/design-fixtures/bad-design.md`。
+  - `lint_scenes.py` 加“画面手段”：每个场景用了哪些技法，只用框、线、文字的记 warn。
+  - `newbie_pack.py`：新手测试题包（旁白 + 联系表 + 学习目标题）和记录模板，交给没有上下文的会话作答。
+  - `examples.py`：`render`（临时装进工程、先 tsc、带 QA 渲染、结束清理）、`check`（示例当回归用例：QA 0 error、0 fast-move、
+    lint 门槛、0 处跨 `at()` 冲突、design.md 通过）、`frames`（按清单抽关键帧）。`qa_selftest.py` 加 check_design 的正反例。
+- **对照旧版第 3 章**：现有 `ch03-design.md` 跑 `check_design.py`，16 个单元全部 FAIL（没有 P0 机制密度、[走查] 题、图式）；
+  53 个场景的“画面手段”是 0 种——正好对应“深度不够”和“只有框和线”。
+- **环境**：本机原来没有 Manim 环境（系统 Python 3.9）。pip 证书报错用 `--native-tls`；`pycairo` 没有 macOS wheel，
+  用 conda-forge 建的隔离环境（在会话临时目录，不入库）。机器上没有 Noto Sans CJK，Manim 关键帧是回退字体渲的。
+  `SETUP.md`、skill `manim.md` 都写了这几条。
+- **下一步**：Muse 按 v1.9 重做第 3 章——先改 design.md 让 `check_design.py` 通过，再分镜、场景。
