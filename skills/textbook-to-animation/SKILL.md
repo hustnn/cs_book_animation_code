@@ -3,7 +3,7 @@ name: textbook-to-animation
 description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计（含机制图式：数据有身份、会移动，不是框和线）、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及教学设计检查、静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查；自带示例（一个完整单元和两个工具的技法图库）可直接渲染参照。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.10.0"
+  version: "1.10.2"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -272,6 +272,10 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
   要修的 error 清单、静止 3–6s 的拍、移动过快的文字、没被 QA 覆盖的场景。
   每条 error 要么修掉，要么确认是有意的（划掉、打叉、遮罩）并给那个节点设 `key="qa-ignore-<说明>"`；
   转场叠化中的重叠只记 warn。
+- 渲染后验证落盘文件：每个场景渲完，`qa_chapter.py` 还会验证刚落盘的 `output/<场景>.mp4`——顶层 atom 结构
+  （恰好一个 moov、没有 atom 越过文件尾）、ffprobe 容器/视频轨时长与帧数、全片解码无错、文件时长不比 timeline
+  预期短（只查下界：动画超过旁白的拍本来就会把场景拖长）。验证失败的场景记为渲染失败、报告删掉、不写指纹，
+  下次照样重渲。QA 是对直播页面采样，不看法盘文件，渲染报成功不等于文件可用。
 - 渲染后：`python <skill>/scripts/sample_frames.py <成片或场景视频> --timeline timeline/<unit>.json [--scene <场景>.tsx] -o <输出目录>`：
   每拍 5 帧全分辨率 + 一行一拍的联系表，以及每拍**真实的最长定格**（freezedetect；≥ 3s 记 warn，≥ 6s 记 error）。
   lint 的“静止占比”只是静态估算，看不出“动画 0.5 秒做完、剩下 6 秒静止”，以这里的实测为准。

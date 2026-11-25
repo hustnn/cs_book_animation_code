@@ -18,6 +18,8 @@
   4. 渲染锁（用临时锁目录，不碰真实的锁）：排队、超时不运行、死锁自动清、不删活锁、嵌套不自等、被 kill 也放锁，
      Python（render_lock.py）与 Node（render-lock.mjs）两边互认，render.mjs 拿不到锁时不渲染；
      以及 render.mjs 的 --help 和不认识的参数不会启动渲染。约 20 秒，不需要 --project。
+  5. 落盘验证：对渲出的 qa-fixture.mp4 现场造截断、双 moov、NAL 损坏、空头文件和预期时长对不上的复现，
+     确认 verify_output 全部拦下、干净文件通过；坏文件用例不进版本库。
   工程里的 lib/qa.ts、beats.ts、layout.ts 与 skill 里的不一致时会先提示：自检测的是工程里的那一份。
 有不符合预期的用例时退出码为 1。
 """
@@ -255,6 +257,8 @@ def check_lint():
         rows.append((f"lint 可见文字报出「{k}」", k in kinds, f"实际 {sorted(kinds)}"))
     bad = [v[4] for v in visible if v[4].startswith(("p99", "p50", "b3", "u7"))]
     rows.append(("lint 不误报百分位、拍号、key", not bad, f"误报 {bad}"))
+    ext = [v for v in visible if v[5] == "延伸 · 原文之外"]
+    rows.append(("lint 不误报设计规定的“延伸 · 原文之外”标签", not ext, f"误报 {ext}"))
     return rows
 
 
@@ -414,6 +418,76 @@ def check_qa(project: Path, port: str, keep: bool):
     return rows
 
 
+def check_verify_output(project: Path):
+    """落盘验证（qa_chapter.verify_output）：干净文件通过；截断、双 moov、NAL 损坏、空头文件、
+    与 timeline 预期时长对不上都必须失败；有拍不在 timeline 里时只查下界，不误报偏长的文件。
+    坏文件用渲出的 qa-fixture.mp4 现场造出来，不往版本库里放二进制。"""
+    sys.path.insert(0, str(SKILL / "scripts"))
+    import qa_chapter  # noqa: E402
+    rows = []
+    good = project / "output" / "qa-fixture.mp4"
+    if not good.exists():
+        return [("落盘验证：需要先渲出 qa-fixture.mp4", False, "output/qa-fixture.mp4 不存在")]
+    data = good.read_bytes()
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        # 场景与 timeline 按工程里的相对位置摆放（src/scenes/… → src/timeline/…），
+        # verify_output 才能从场景的 import 算出预期时长
+        scene_dir = tmp / "src" / "scenes" / "qa-fixtures"
+        scene_dir.mkdir(parents=True)
+        (tmp / "src" / "timeline").mkdir(parents=True)
+        shutil.copy(FIX / "qa-fixture.tsx", scene_dir / "qa-fixture.tsx")
+        shutil.copy(FIX / "qa-fixture.json", tmp / "src" / "timeline" / "qa-fixture.json")
+        scene = scene_dir / "qa-fixture.tsx"
+        variants = {"good": good}
+        trunc = tmp / "trunc.mp4"
+        trunc.write_bytes(data[: max(4096, len(data) // 5)])
+        variants["trunc"] = trunc
+        double = tmp / "double.mp4"
+        double.write_bytes(data + data)
+        variants["double"] = double
+        corrupt = tmp / "corrupt.mp4"
+        buf = bytearray(data)
+        start = min(100000, len(buf) // 2)
+        end = min(start + 10240, len(buf))
+        buf[start:end] = b"\x00" * (end - start)
+        corrupt.write_bytes(bytes(buf))
+        variants["corrupt"] = corrupt
+        header = tmp / "header.mp4"
+        header.write_bytes(data[:48])
+        variants["header"] = header
+        for name, path in variants.items():
+            problems = qa_chapter.verify_output(path, scene)
+            want_fail = name != "good"
+            rows.append((f"落盘验证：{name} 文件{'必须失败' if want_fail else '必须通过'}",
+                         (bool(problems) if want_fail else not problems),
+                         f"问题：{problems}"))
+        # 预期时长比对：timeline 说 1000 秒、文件只有几十秒，必须失败
+        (tmp / "src" / "timeline" / "long.json").write_text(
+            json.dumps({"beats": [{"id": "x1", "dur": 1000.0, "text": ""}]}), encoding="utf-8")
+        long_scene = scene_dir / "long-scene.tsx"
+        long_scene.write_text(
+            "import timeline from '../../timeline/long.json';\n"
+            "const beat = makeBeats(timeline);\n"
+            "yield* beat('x1');\n", encoding="utf-8")
+        problems = qa_chapter.verify_output(good, long_scene)
+        rows.append(("落盘验证：文件比 timeline 预期短得多时失败",
+                     bool(problems) and any("预期" in p for p in problems), f"问题：{problems}"))
+        # 有拍不在 timeline 里时，预期只是下界：文件比下界长不算错
+        (tmp / "src" / "timeline" / "partial.json").write_text(
+            json.dumps({"beats": [{"id": "y1", "dur": 1.0, "text": ""}]}), encoding="utf-8")
+        partial_scene = scene_dir / "partial-scene.tsx"
+        partial_scene.write_text(
+            "import timeline from '../../timeline/partial.json';\n"
+            "const beat = makeBeats(timeline);\n"
+            "yield* beat('y1');\n"
+            "yield* beat('y-missing');\n", encoding="utf-8")
+        problems = qa_chapter.verify_output(good, partial_scene)
+        rows.append(("落盘验证：有拍不在 timeline 里时只查下界、不误报偏长的文件",
+                     not problems, f"问题：{problems}"))
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", type=Path, help="Motion Canvas 工程目录（含 scripts/render.mjs、src/project.ts）")
@@ -430,6 +504,7 @@ def main():
         if not a.project:
             ap.error("渲染 QA 自检需要 --project（只测 lint 用 --lint-only）")
         rows += check_qa(a.project.resolve(), a.port, a.keep)
+        rows += check_verify_output(a.project.resolve())
     fails = [r for r in rows if not r[1]]
     for name, ok, detail in rows:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}" + ("" if ok else f"  ← {detail}"))
