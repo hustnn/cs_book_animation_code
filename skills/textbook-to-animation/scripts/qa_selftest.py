@@ -19,7 +19,8 @@
      Python（render_lock.py）与 Node（render-lock.mjs）两边互认，render.mjs 拿不到锁时不渲染；
      以及 render.mjs 的 --help 和不认识的参数不会启动渲染。约 20 秒，不需要 --project。
   5. 落盘验证：对渲出的 qa-fixture.mp4 现场造截断、双 moov、NAL 损坏、空头文件和预期时长对不上的复现，
-     确认 verify_output 全部拦下、干净文件通过；坏文件用例不进版本库。
+     确认 verify_output 全部拦下、干净文件通过；有 ffprobe 和只有 ffmpeg 两种模式都测；缺 ffmpeg 时返回问题、不抛异常；
+     注释里的 beat('…') 不计入预期时长。坏文件用例不进版本库。
   工程里的 lib/qa.ts、beats.ts、layout.ts 与 skill 里的不一致时会先提示：自检测的是工程里的那一份。
 有不符合预期的用例时退出码为 1。
 """
@@ -457,7 +458,7 @@ def check_verify_output(project: Path):
         header.write_bytes(data[:48])
         variants["header"] = header
         for name, path in variants.items():
-            problems = qa_chapter.verify_output(path, scene)
+            problems = qa_chapter.verify_output(path, scene, project)
             want_fail = name != "good"
             rows.append((f"落盘验证：{name} 文件{'必须失败' if want_fail else '必须通过'}",
                          (bool(problems) if want_fail else not problems),
@@ -470,7 +471,7 @@ def check_verify_output(project: Path):
             "import timeline from '../../timeline/long.json';\n"
             "const beat = makeBeats(timeline);\n"
             "yield* beat('x1');\n", encoding="utf-8")
-        problems = qa_chapter.verify_output(good, long_scene)
+        problems = qa_chapter.verify_output(good, long_scene, project)
         rows.append(("落盘验证：文件比 timeline 预期短得多时失败",
                      bool(problems) and any("预期" in p for p in problems), f"问题：{problems}"))
         # 有拍不在 timeline 里时，预期只是下界：文件比下界长不算错
@@ -482,9 +483,43 @@ def check_verify_output(project: Path):
             "const beat = makeBeats(timeline);\n"
             "yield* beat('y1');\n"
             "yield* beat('y-missing');\n", encoding="utf-8")
-        problems = qa_chapter.verify_output(good, partial_scene)
+        problems = qa_chapter.verify_output(good, partial_scene, project)
         rows.append(("落盘验证：有拍不在 timeline 里时只查下界、不误报偏长的文件",
                      not problems, f"问题：{problems}"))
+        # 注释里的 beat('…') 不计入预期时长：x1 在 timeline 里 1000 秒，只出现在注释里，不能让好文件“比预期短”
+        commented = scene_dir / "commented-scene.tsx"
+        commented.write_text(
+            "import timeline from '../../timeline/long.json';\n"
+            "// 旧写法：yield* beat('x1');\n"
+            "/* yield* beat('x1'); */\n"
+            "const icon = 'http://www.w3.org/2000/svg';\n", encoding="utf-8")
+        problems = qa_chapter.verify_output(good, commented, project)
+        rows.append(("落盘验证：注释里的 beat('…') 不计入预期时长", not problems, f"问题：{problems}"))
+        # 工具：只有 ffmpeg（没有 ffprobe）时照样能验，好文件通过、截断和预期时长对不上都拦下
+        ffmpeg = qa_chapter.find_tool("ffmpeg", project)
+        only = {"ffmpeg": ffmpeg, "ffprobe": None}
+        ok_good = not qa_chapter.verify_output(good, scene, tools=only)
+        ok_trunc = bool(qa_chapter.verify_output(trunc, scene, tools=only))
+        ok_long = any("预期" in x for x in qa_chapter.verify_output(good, long_scene, tools=only))
+        rows.append(("落盘验证：只有 ffmpeg 时也能验（好文件过，截断、偏短拦下）", bool(ffmpeg) and ok_good and ok_trunc and ok_long,
+                     f"ffmpeg={ffmpeg} 好={ok_good} 截断={ok_trunc} 偏短={ok_long}"))
+        # 缺 ffmpeg：返回问题、不抛异常（qa_chapter 主流程会在渲染前就停下）
+        try:
+            none = qa_chapter.verify_output(good, scene, tools={"ffmpeg": None, "ffprobe": None})
+            rows.append(("落盘验证：找不到 ffmpeg 时返回问题、不抛异常", any("找不到 ffmpeg" in x for x in none), f"问题：{none}"))
+        except Exception as e:  # noqa: BLE001
+            rows.append(("落盘验证：找不到 ffmpeg 时返回问题、不抛异常", False, repr(e)))
+        # 环境变量 FFMPEG 优先于 PATH 和工程自带的那份
+        old = os.environ.get("FFMPEG")
+        os.environ["FFMPEG"] = str(good)  # 任意一个存在的文件，只测查找顺序
+        try:
+            rows.append(("落盘验证：环境变量 FFMPEG 优先", qa_chapter.find_tool("ffmpeg", project) == str(good),
+                         f"实际 {qa_chapter.find_tool('ffmpeg', project)}"))
+        finally:
+            if old is None:
+                os.environ.pop("FFMPEG", None)
+            else:
+                os.environ["FFMPEG"] = old
     return rows
 
 

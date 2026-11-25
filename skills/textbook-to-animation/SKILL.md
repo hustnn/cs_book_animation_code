@@ -275,7 +275,9 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - 渲染后验证落盘文件：每个场景渲完，`qa_chapter.py` 还会验证刚落盘的 `output/<场景>.mp4`——顶层 atom 结构
   （恰好一个 moov、没有 atom 越过文件尾）、ffprobe 容器/视频轨时长与帧数、全片解码无错、文件时长不比 timeline
   预期短（只查下界：动画超过旁白的拍本来就会把场景拖长）。验证失败的场景记为渲染失败、报告删掉、不写指纹，
-  下次照样重渲。QA 是对直播页面采样，不看法盘文件，渲染报成功不等于文件可用。
+  下次照样重渲。QA 是对直播页面采样，不看落盘文件，渲染报成功不等于文件可用。
+  验证要用 ffmpeg（环境变量 `FFMPEG` → PATH → 工程里 Motion Canvas 自带的那份）；有 ffprobe 时多核对视频轨时长和元数据帧数。
+  要渲染却连 ffmpeg 都找不到，`qa_chapter.py` 渲染前就停下（退出码 4）。
 - 渲染后：`python <skill>/scripts/sample_frames.py <成片或场景视频> --timeline timeline/<unit>.json [--scene <场景>.tsx] -o <输出目录>`：
   每拍 5 帧全分辨率 + 一行一拍的联系表，以及每拍**真实的最长定格**（freezedetect；≥ 3s 记 warn，≥ 6s 记 error）。
   lint 的“静止占比”只是静态估算，看不出“动画 0.5 秒做完、剩下 6 秒静止”，以这里的实测为准。
