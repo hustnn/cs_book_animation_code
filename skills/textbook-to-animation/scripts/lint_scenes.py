@@ -17,6 +17,8 @@
      （场景 import 的 timeline、--narration 指定的 JSON）里不出现书页、图号、“书里/原图”、内部编号；
      “p6”这类可能是页码的写法记 warn（p50/p99 等百分位不算）
   8. 时间轴副本一致（给了 --timeline-dir 时）：场景 import 的 timeline 与章节目录里那份逐个比对
+  9. 开头有标题（assets/motion-canvas/opening.tsx）：播某个 timeline 第一拍的场景，要有 UnitTitle（单元站牌）
+     或 ChapterTitle（整章开篇）；目录里有两个以上 timeline（一整章）时，还要有一个场景用 ChapterTitle 且开篇里有 Roadmap
   另列“画面手段”（不计入门槛）：每个场景用到了哪些图式组件和技法（references/techniques.md），
   只用了框、线、文字的场景记 warn——讲机制的场景先选图式，再挑技法。
   另外给出提示（不计入门槛）：sequence(0, …)、硬编码的十六进制颜色、多个列表共用 key={String(i)}。
@@ -405,6 +407,55 @@ def techniques_used(src: str):
     return [name for name, rx in TECHNIQUES if rx.search(code)]
 
 
+# ---------- 开头：章标题、路线图、单元站牌 ----------
+# 观众一打开就被扔进第一个机制，不知道这章讲什么、现在讲到哪：单元第一拍先亮标题，整章开头先给路线图。
+
+OPENERS = {
+    "unit": re.compile(r"\bnew\s+UnitTitle\s*\(|<UnitTitle\b"),
+    "chapter": re.compile(r"\bnew\s+ChapterTitle\s*\(|<ChapterTitle\b"),
+    "roadmap": re.compile(r"\bnew\s+Roadmap\s*\(|<Roadmap\b"),
+}
+
+
+def openers_used(src: str):
+    code = re.sub(r"//[^\n]*", "", src)
+    return {k: bool(rx.search(code)) for k, rx in OPENERS.items()}
+
+
+def first_beat(p) -> str:
+    try:
+        data = json.loads(Path(p).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ""
+    beats = data["beats"] if isinstance(data, dict) else data
+    return beats[0]["id"] if beats else ""
+
+
+def opening_problems(results):
+    """[(场景, 说明)]：单元第一拍没有标题；一整章（≥ 2 个 timeline）没有开篇或开篇没有路线图。"""
+    mc = [r for r in results if r["kind"] in ("custom", "card") and r.get("timeline_path")]
+    by_tl = {}
+    for r in mc:
+        by_tl.setdefault(str(r["timeline_path"]), []).append(r)
+    out = []
+    for tl, rs in sorted(by_tl.items()):
+        first = first_beat(tl)
+        for r in rs:
+            if first and first in r.get("plays", ()) and not (r["opener"]["unit"] or r["opener"]["chapter"]):
+                out.append((r["file"], f"播的是 {Path(tl).name} 的第一拍 {first}，开头却没有标题："
+                                       "单元用 UnitTitle（站牌：章名 · 第 k 站 + 单元标题），整章开篇用 ChapterTitle"))
+    if len(by_tl) >= 2:
+        chap = [r for r in mc if r["opener"]["chapter"]]
+        if not chap:
+            out.append(("（整章）", f"{len(by_tl)} 个单元却没有开篇：开篇单元第一拍用 ChapterTitle 亮出章名，"
+                                    "再用 Roadmap 讲这章分几部分（examples/opening/）"))
+        else:
+            tls = {str(r["timeline_path"]) for r in chap}
+            if not any(r["opener"]["roadmap"] for r in mc if str(r["timeline_path"]) in tls):
+                out.append((chap[0]["file"], "开篇有章标题、没有路线图：用 Roadmap 把这章的几个部分和各单元摆出来"))
+    return out
+
+
 # ---------- 观众可见文字 ----------
 # 动画要自包含：画面和旁白里不出现书的页码、图号、“书里/原图”这类说法，也不出现内部编号（U3、b27）。
 
@@ -458,6 +509,7 @@ def lint_mc_scene(path: Path, a):
     r["conflicts"] = tween_conflicts(src)
     r["cue_overlaps"] = cue_overlaps(src, load_speech(path, src))
     r["techniques"] = techniques_used(src)
+    r["opener"] = openers_used(src)
     r["visible"] = audit_source(src, MC_VISIBLE, path.name)
     r["timeline_path"] = timeline_path(path, src)
     seq0 = len(PAR_SEQ0.findall(src))
@@ -472,6 +524,7 @@ def lint_mc_scene(path: Path, a):
     beat_calls = re.findall(r"\bbeat\(\s*['\"]([^'\"]+)['\"]", src)
     empty_beats = re.findall(r"\bbeat\(\s*['\"]([^'\"]+)['\"]\s*\)", src)
     card_beats = re.findall(r"\b(?:beat|titleBeat)\s*:\s*['\"]([^'\"]+)['\"]", src)
+    r["plays"] = sorted(set(beat_calls) | set(card_beats))
 
     card_call = src.find("makeCardScene(")
     is_card = card_call >= 0 and not re.search(r"export\s+function\s+makeCardScene", src)
@@ -673,6 +726,13 @@ def main():
                   + (" …" if len(plain) > 12 else "")
                   + "\n         讲机制的场景先按 visual-schemas.md 选图式，再到 techniques.md 挑技法")
 
+    # 开头：单元第一拍有标题；整章有开篇（章标题 + 路线图）
+    opening = opening_problems(results)
+    if opening:
+        print("\n开头（单元第一拍先亮标题，整章先给路线图；组件见 assets/motion-canvas/opening.tsx）：")
+        for f, why in opening:
+            print(f"  [error] {f}：{why}")
+
     # 观众可见文字：场景里的画面文字 + 旁白（场景 import 的 timeline、--narration）
     visible = [v for r in results for v in r.get("visible", [])]
     imported = {r["timeline_path"] for r in results if r.get("timeline_path")}
@@ -713,6 +773,7 @@ def main():
         (f"文字卡 ≤ {a.max_card_lines} 行", not any(r.get("card_too_long") for r in results), ""),
         ("并行补间没有同属性冲突", not conflicts, f"{len(conflicts)} 处" if conflicts else ""),
         ("观众可见文字不引用书页/图号/内部编号", not vis_errors, f"{len(vis_errors)} 处" if vis_errors else ""),
+        ("单元开头有标题；整章有开篇（章标题 + 路线图）", not opening, f"{len(opening)} 处" if opening else ""),
     ]
     if a.timeline_dir:
         gates.append(("时间轴两份拷贝一致", not drift, f"{len(drift)} 份不一致" if drift else ""))
@@ -723,7 +784,7 @@ def main():
     if a.json:
         a.json.write_text(json.dumps({"scenes": results, "card_share": share, "conflicts": conflicts,
                                       "cue_overlaps": overlaps, "plain_scenes": plain if mc_custom else [],
-                                      "visible": visible, "timeline_drift": drift,
+                                      "visible": visible, "timeline_drift": drift, "opening": opening,
                                       "gates": [{"name": n, "pass": ok} for n, ok, _ in gates]},
                                      ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     if a.strict and not all(ok for _, ok, _ in gates):

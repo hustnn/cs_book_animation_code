@@ -1,6 +1,6 @@
 {
   "kind": "motion-canvas",
-  "summary": "完整单元示例：LSM 树的写入、读取（布隆过滤器）、两种压缩合并。设计 → 分镜 → 场景 → 自检全套，深度延伸带依据。",
+  "summary": "完整单元示例（第一拍是单元站牌）：LSM 树的写入、读取（布隆过滤器）、两种压缩合并。设计 → 分镜 → 场景 → 自检全套，深度延伸带依据。",
   "scenes": [
     "lsm-write",
     "lsm-read",
@@ -8,27 +8,33 @@
   ],
   "timeline": "timeline.json",
   "lib": [
-    "schemas.ts"
+    "schemas.ts",
+    "opening.tsx"
   ],
   "frames": [
     {
       "scene": "lsm-write",
-      "t": 35.81,
+      "t": 2.6,
+      "name": "w00-unit-title"
+    },
+    {
+      "scene": "lsm-write",
+      "t": 38.98,
       "name": "w06-sorted-insert"
     },
     {
       "scene": "lsm-write",
-      "t": 47.44,
+      "t": 50.6,
       "name": "w08-overwrite"
     },
     {
       "scene": "lsm-write",
-      "t": 65.27,
+      "t": 68.44,
       "name": "w11-flush"
     },
     {
       "scene": "lsm-write",
-      "t": 83.86,
+      "t": 87.03,
       "name": "w14-map"
     },
     {

@@ -1,0 +1,49 @@
+{
+  "kind": "motion-canvas",
+  "summary": "整章开篇示例：章标题 → 这章讲什么 → 和上一章的关系 → 路线图逐部分点亮 → 下一站。约 70 秒，组件在 assets/motion-canvas/opening.tsx。",
+  "scenes": [
+    "opening-chapter"
+  ],
+  "timeline": "timeline.json",
+  "lib": [
+    "schemas.ts",
+    "opening.tsx"
+  ],
+  "frames": [
+    {
+      "scene": "opening-chapter",
+      "t": 2.9,
+      "name": "o01-title"
+    },
+    {
+      "scene": "opening-chapter",
+      "t": 11.6,
+      "name": "o02-store-retrieve"
+    },
+    {
+      "scene": "opening-chapter",
+      "t": 22.0,
+      "name": "o03-index-tradeoff"
+    },
+    {
+      "scene": "opening-chapter",
+      "t": 30.2,
+      "name": "o04-layers"
+    },
+    {
+      "scene": "opening-chapter",
+      "t": 42.0,
+      "name": "o05-part-one"
+    },
+    {
+      "scene": "opening-chapter",
+      "t": 60.6,
+      "name": "o07-three-parts"
+    },
+    {
+      "scene": "opening-chapter",
+      "t": 69.5,
+      "name": "o09-next-stop"
+    }
+  ]
+}

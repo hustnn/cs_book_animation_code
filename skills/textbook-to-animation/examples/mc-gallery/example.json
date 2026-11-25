@@ -7,42 +7,48 @@
   ],
   "timeline": "beats.json",
   "lib": [
-    "schemas.ts"
+    "schemas.ts",
+    "opening.tsx"
   ],
   "frames": [
     {
       "scene": "mc-structures",
-      "t": 10.8,
+      "t": 3.0,
+      "name": "s00-title"
+    },
+    {
+      "scene": "mc-structures",
+      "t": 14.93,
       "name": "s02-code-pointers"
     },
     {
       "scene": "mc-structures",
-      "t": 20.4,
+      "t": 24.53,
       "name": "s04-code-found"
     },
     {
       "scene": "mc-structures",
-      "t": 33.5,
+      "t": 37.63,
       "name": "s06-reparent-split"
     },
     {
       "scene": "mc-structures",
-      "t": 40.7,
+      "t": 44.83,
       "name": "s07-separator-up"
     },
     {
       "scene": "mc-structures",
-      "t": 48.6,
+      "t": 52.73,
       "name": "s08-layout-insert"
     },
     {
       "scene": "mc-structures",
-      "t": 67.4,
+      "t": 71.53,
       "name": "s11-computed-ring"
     },
     {
       "scene": "mc-structures",
-      "t": 75.3,
+      "t": 79.43,
       "name": "s12-latex"
     },
     {

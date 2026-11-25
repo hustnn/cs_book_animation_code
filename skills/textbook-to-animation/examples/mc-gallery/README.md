@@ -4,7 +4,7 @@
 所以它同时也是“讲深”的样本：画面在演机制，而不是在展示动画效果。
 手法的适用场景、最小写法见 `references/techniques.md`；这里是“在哪一拍、哪段代码”。
 
-- `scenes/mc-structures.tsx`：结构类（s1–s12）；`scenes/mc-flows.tsx`：流动与时间类（f1–f9）。
+- `scenes/mc-structures.tsx`：结构类（s0–s12；s0 是开头的标题，`UnitTitle` 不带章数据的用法）；`scenes/mc-flows.tsx`：流动与时间类（f1–f9）。
 - `beats.json`：旁白（没有配音，时长按字数估算——示例只为演手法，正式单元要走配音流程）。
 - `frames/`：14 张关键帧。
 - 渲染：`python <skill>/scripts/examples.py render mc-gallery --project <motion-canvas 工程>`。

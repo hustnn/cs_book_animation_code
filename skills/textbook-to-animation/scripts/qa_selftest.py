@@ -265,6 +265,51 @@ def check_lint():
     rows.append(("lint 不误报百分位、拍号、key", not bad, f"误报 {bad}"))
     ext = [v for v in visible if v[5] == "延伸 · 原文之外"]
     rows.append(("lint 不误报设计规定的“延伸 · 原文之外”标签", not ext, f"误报 {ext}"))
+    return rows + check_lint_opening()
+
+
+def check_lint_opening():
+    """lint 的“开头”规则：播 timeline 第一拍的场景要有 UnitTitle / ChapterTitle；一整章要有 ChapterTitle + Roadmap 的开篇。"""
+    scene = """import {{makeScene2D}} from '@motion-canvas/2d';
+import {{makeBeats}} from '../../lib/beats';
+import {{ChapterTitle, Roadmap, UnitTitle}} from '../../lib/opening';
+import timeline from '../../timeline/{tl}.json';
+export default makeScene2D(function* (view) {{
+  const beat = makeBeats(timeline);
+  {body}
+  yield* beat('{first}');
+  yield* beat('{second}');
+}});
+"""
+    rows = []
+    with tempfile.TemporaryDirectory() as tmp:
+        sc = Path(tmp) / "src" / "scenes" / "ch"
+        tl = Path(tmp) / "src" / "timeline"
+        sc.mkdir(parents=True)
+        tl.mkdir()
+
+        def add(name, first, body):
+            (tl / f"{name}.json").write_text(json.dumps([{"id": first, "text": "一"}, {"id": first + "x", "text": "二"}]))
+            (sc / f"{name}.tsx").write_text(scene.format(tl=name, first=first, second=first + "x", body=body), encoding="utf-8")
+
+        def lint():
+            out = Path(tmp) / "lint.json"
+            subprocess.run([sys.executable, "-I", str(SKILL / "scripts" / "lint_scenes.py"), str(sc), "--json", str(out)],
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL)
+            return sorted(f for f, _ in json.loads(out.read_text(encoding="utf-8")).get("opening", []))
+
+        add("ua", "a1", "// UnitTitle 只写在注释里不算")
+        add("ub", "b1", "const u = new UnitTitle(null, null, {title: '第二单元'});")
+        got = lint()
+        rows.append(("lint 开头：单元第一拍没有标题的场景报出、有 UnitTitle 的不报；两个单元没有开篇报“整章”",
+                     got == ["ua.tsx", "（整章）"], f"实际 {got}"))
+        add("u0", "o1", "const t = new ChapterTitle({title: '章'} as any);")
+        got = lint()
+        rows.append(("lint 开头：开篇只有 ChapterTitle、没有 Roadmap → 报开篇缺路线图",
+                     got == ["u0.tsx", "ua.tsx"], f"实际 {got}"))
+        add("u0", "o1", "const t = new ChapterTitle({title: '章'} as any); const m = new Roadmap({title: '章', parts: []} as any);")
+        got = lint()
+        rows.append(("lint 开头：开篇有 ChapterTitle + Roadmap → 只剩没有站牌的单元", got == ["ua.tsx"], f"实际 {got}"))
     return rows
 
 
@@ -279,16 +324,38 @@ def check_design():
                  good.stdout[-400:]))
     bad = subprocess.run([sys.executable, "-I", str(script), str(SKILL / "assets" / "design-fixtures" / "bad-design.md")],
                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    fails, unit = set(), ""
-    for ln in bad.stdout.splitlines():
-        if ln.startswith("## 单元 "):
-            unit = ln[len("## 单元 "):][:1]
-        elif "[FAIL]" in ln:
-            fails.add(f"{unit}:{ln.split('[FAIL]')[1].split('：')[0].strip()}")
+    def found(stdout: str, level: str = "FAIL"):
+        out, unit = set(), ""
+        for ln in stdout.splitlines():
+            if ln.startswith("## 单元 "):
+                unit = ln[len("## 单元 "):][:1]
+            elif ln.startswith("## "):
+                unit = ln[3:].split("：")[0]
+            elif f"[{level}]" in ln:
+                out.add(f"{unit}:{ln.split(f'[{level}]')[1].split('：')[0].strip()}")
+        return out
+
+    fails = found(bad.stdout)
     want = {"A:P0 机制", "A:机制走查 · 写入", "A:机制走查 · 读取", "A:机制走查 · 合并", "A:机制走查 · 分区",
-            "B:走查题", "B:图式", "C:机制走查 · 页分裂", "C:深度延伸"}
-    rows.append(("check_design：反例报出的 FAIL 与预期一致（密度、走查题、图式、走查长度、延伸依据；小结单元不查）",
+            "B:走查题", "B:图式", "C:机制走查 · 页分裂", "C:深度延伸", "整章:开篇"}
+    rows.append(("check_design：反例报出的 FAIL 与预期一致（密度、走查题、图式、走查长度、延伸依据、整章没有开篇；小结单元不查）",
                  bad.returncode == 1 and fails == want, f"多 {sorted(fails - want)}，少 {sorted(want - fails)}"))
+
+    op = SKILL / "examples" / "opening"
+    good_op = subprocess.run([sys.executable, "-I", str(script), str(op / "design.md"), "--beats-json", str(op / "beats.json")],
+                             capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    rows.append(("check_design：示例开篇的 design.md 全部通过（章标题、主旨、开篇拍、路线图、标题拍是第一拍）",
+                 good_op.returncode == 0 and "[FAIL]" not in good_op.stdout and "[PASS] 标题拍" in good_op.stdout,
+                 good_op.stdout[-400:]))
+    fx = SKILL / "assets" / "design-fixtures"
+    bad_op = subprocess.run([sys.executable, "-I", str(script), str(fx / "bad-opening.md"),
+                             "--beats-json", str(fx / "bad-opening-beats.json")],
+                            capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    fails, warns = found(bad_op.stdout), found(bad_op.stdout, "WARN")
+    want = {"整章:一句话主旨", "整章:路线图覆盖", "整章:标题拍"}
+    rows.append(("check_design：开篇反例报出 主旨 / 路线图漏站 / 标题拍不是第一拍 三个 FAIL、站名过长 WARN",
+                 bad_op.returncode == 1 and fails == want and "整章:站名" in warns,
+                 f"多 {sorted(fails - want)}，少 {sorted(want - fails)}，WARN {sorted(warns)}"))
     return rows
 
 
@@ -313,7 +380,7 @@ def check_design_gate():
         r = qa_chapter.design_gate(proj)
         rows.append(("qa_chapter 设计门槛：找到两份设计 → 拦下，要求 --design", r["status"] == "ambiguous", f"实际 {r['status']}"))
         r = qa_chapter.design_gate(proj, ch / "design.md")
-        rows.append(("qa_chapter 设计门槛：坏设计 → 拦下并列出 FAIL", r["status"] == "fail" and len(r["fails"]) == 9,
+        rows.append(("qa_chapter 设计门槛：坏设计 → 拦下并列出 FAIL", r["status"] == "fail" and len(r["fails"]) == 10,
                      f"实际 {r['status']}，{len(r.get('fails', []))} 条"))
         r = qa_chapter.design_gate(proj, skip=True)
         rows.append(("qa_chapter 设计门槛：--no-design 放行、标为跳过", r["status"] == "skipped", f"实际 {r['status']}"))

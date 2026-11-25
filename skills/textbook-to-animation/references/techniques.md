@@ -27,6 +27,7 @@
 
 | 要讲的东西 | 首选技法 | 示例 |
 |---|---|---|
+| 这章讲什么、分几部分、现在讲到哪（开篇、单元开头、小结） | `ChapterTitle` + `Roadmap`（逐行点亮、念到的站闪、标下一站）；`UnitTitle` 站牌；小结 `Roadmap.complete()` | opening o1–o9；lsm w0 |
 | 数据结构内部怎么变（插入、覆盖、分裂、合并） | 有身份的数据块 + 槽位容器；reparent；Layout 只补间尺寸 | lsm w1–w14；mc-gallery s5–s9 |
 | 算法一步步怎么走 | Code 逐行高亮 + 信号驱动的指针 | mc-gallery s1–s4 |
 | 分区、路由、哈希、归属 | 圆弧 + createComputed 派生归属 | mc-gallery s10–s12 |
