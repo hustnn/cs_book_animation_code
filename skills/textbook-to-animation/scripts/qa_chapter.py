@@ -25,6 +25,11 @@
 都直接停下、不渲染，退出码 2——机制没设计清楚，渲染出来的画面也要推倒重做。SKILL.md 第 2 步的门槛就是它。
 
 渲染门槛：选中的场景都有最新的报告（渲染成功）、error 总数为 0。
+每个场景渲完还会验证刚落盘的 output/<场景>.mp4（atom 结构、ffprobe 时长/帧数、全片解码、
+与 timeline 预期时长比对）：验证失败也算渲染失败，不写指纹——QA 是对直播页面采样，
+不看落盘文件，渲染报成功不等于文件可用。验证要用 ffmpeg：依次找环境变量 FFMPEG、PATH、工程
+node_modules/@ffmpeg-installer 里 Motion Canvas 自带的那份；ffprobe（环境变量 FFPROBE、PATH、ffmpeg 旁边）
+有就用来多核对容器 / 视频轨时长和元数据帧数，没有就只用 ffmpeg。要渲染时连 ffmpeg 都找不到，渲染前就停下（退出码 4）。
 汇总里另列：idle warn（动画做完后静止 3–6s 的拍，人工审查时要逐条说得出理由）、fast-move warn（看得清的文字
 一次移动不到 0.5s 就走了 ≥ 150px，观众跟不上，逐条看一眼是不是机制的主角）、各类 warn 的条数、
 没有用 beat() 计时的场景（QA 查不到，标为“未覆盖”，要人工看帧）。Manim 段不在范围内。
@@ -34,7 +39,9 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -174,10 +181,242 @@ def stale(scene: Path, report: Path) -> bool:
     return json.loads(side.read_text(encoding="utf-8")) != fingerprint(scene)
 
 
+# ---------- 落盘文件验证（v1.10.1）----------
+# QA 是对直播页面采样的，不看落盘文件；渲染报成功也不等于文件可用：编码器可能中途停写，
+# 落盘文件截断、双 moov、NAL 损坏，而 QA 仍报 0 error（制作里两例：85 秒的场景只落盘 18.93 秒、
+# 132.67 秒的场景只落盘 16.17 秒，全片解码都“干净”，只比时长才看得出）。
+# 每个场景渲完，顺手验证刚落盘的文件；验证失败的场景记为渲染失败、不写指纹，
+# 下次照样重渲，--no-render 也不会拿它当通过。
+TOOL_EXIT = 4  # 要渲染，却找不到验证落盘文件用的 ffmpeg
+TOOL_HINT = "装 ffmpeg（通常自带 ffprobe），或用环境变量 FFMPEG / FFPROBE 指定可执行文件"
+
+
+def find_tool(name: str, project=None):
+    """ffmpeg / ffprobe 的路径，找不到返回 None：
+    环境变量（FFMPEG / FFPROBE）→ PATH → 工程 node_modules/@ffmpeg-installer/<平台>/ffmpeg（Motion Canvas 自带，只有 ffmpeg）
+    → ffprobe 再看找到的 ffmpeg 旁边有没有。"""
+    env = os.environ.get(name.upper())
+    if env and Path(env).is_file():
+        return env
+    hit = shutil.which(name)
+    if hit:
+        return hit
+    if name == "ffmpeg" and project is not None:
+        for cand in sorted((Path(project) / "node_modules" / "@ffmpeg-installer").glob("*/ffmpeg")):
+            if os.access(cand, os.X_OK):
+                return str(cand)
+    if name == "ffprobe":
+        ff = find_tool("ffmpeg", project)
+        if ff and (Path(ff).parent / "ffprobe").is_file():
+            return str(Path(ff).parent / "ffprobe")
+    return None
+
+
+VERIFY_DUR_TOL = 0.5    # 秒：容器/视频轨时长差、文件时长与预期时长差
+VERIFY_FRAME_TOL = 2    # 帧：帧数与 时长×帧率 之差
+BEAT_CALL_RX = re.compile(r"\bbeat\(\s*['\"]([^'\"]+)['\"]")
+TIMELINE_IMPORT_RX = re.compile(r"import\s+\w+\s+from\s+['\"]([^'\"]+\.json)['\"]")
+CJK_PER_SEC = 4.5  # 与 beats.ts / lint_scenes.py 一致：中文 TTS 常见语速
+VERIFY_PAD = 0.35  # 每拍末尾留白，与 beats.ts / audio_timeline.py 的 --pad 一致
+
+
+def estimate_duration(text: str) -> float:
+    """没有 dur 的拍按旁白字数估算，与 beats.ts estimateDuration 一致。"""
+    cjk = len(re.findall(r"[㐀-鿿豈-﫿]", text))
+    words = len(re.findall(r"[A-Za-z0-9.%]+", text))
+    return (cjk + words * 1.5) / CJK_PER_SEC + VERIFY_PAD
+
+
+def expected_duration(scene: Path):
+    """场景 import 的 timeline 里，本场景用到的拍的 dur 之和（与 lint_scenes.py 的算法一致）。
+    返回 (秒或 None, timeline 里没有的拍)：没有 timeline、或场景没用 beat() 时返回 (None, [])。"""
+    # 去掉注释再数 beat('…')：注释里提到的拍不算（否则预期时长偏长，误报“文件比预期短”）。
+    # 行注释只认前面不是冒号的 //，免得把字符串里的 http:// 当成注释
+    src = re.sub(r"/\*.*?\*/", "", read(scene), flags=re.S)
+    src = re.sub(r"(?m)(^|[^:])//[^\n]*", r"\1", src)
+    m = TIMELINE_IMPORT_RX.search(src)
+    if not m:
+        return None, []
+    p = (scene.parent / m.group(1)).resolve()
+    if not p.exists():
+        return None, []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except ValueError:
+        return None, []
+    beats = data["beats"] if isinstance(data, dict) else data
+    dur = {}
+    for b in beats:
+        if not isinstance(b, dict) or "id" not in b:
+            continue
+        dur[b["id"]] = float(b["dur"]) if b.get("dur") is not None else \
+            estimate_duration(b.get("text", "")) + float(b.get("hold") or 0)
+    calls = BEAT_CALL_RX.findall(src)
+    if not calls:
+        return None, []
+    return sum(dur.get(b, 0.0) for b in calls), sorted(set(calls) - set(dur))
+
+
+def check_atoms(path: Path):
+    """顶层 atom 结构：返回 [问题]。恰好一个 moov；walk 走完整个文件；没有 atom 越过 EOF。
+    双 moov（两个文件拼在一起）、字节截断、48 字节空头文件都在这里拦下。"""
+    try:
+        data = path.read_bytes()
+    except OSError as e:
+        return [f"读不到落盘文件：{e}"]
+    size = len(data)
+    if size < 8:
+        return [f"文件只有 {size} 字节，没有完整的 atom 头"]
+    pos, moovs = 0, 0
+    while pos < size:
+        if pos + 8 > size:
+            return [f"文件尾 {size - pos} 字节凑不够一个 atom 头"]
+        atom_size = int.from_bytes(data[pos:pos + 4], "big")
+        atom_type = data[pos + 4:pos + 8].decode("latin-1")
+        if atom_size == 1:  # 64 位 largesize
+            if pos + 16 > size:
+                return ["largesize atom 头被截断"]
+            atom_size = int.from_bytes(data[pos + 8:pos + 16], "big")
+        elif atom_size == 0:  # 到文件尾
+            atom_size = size - pos
+        if atom_size < 8:
+            return [f"atom {atom_type!r} 的 size {atom_size} 不合法"]
+        if pos + atom_size > size:
+            return [f"atom {atom_type!r} 越过文件尾（size {atom_size}，剩余 {size - pos} 字节）：文件被截断"]
+        if atom_type == "moov":
+            moovs += 1
+        pos += atom_size
+    if moovs == 0:
+        return ["没有 moov atom（空头文件或写盘未完成）"]
+    if moovs > 1:
+        return [f"有 {moovs} 个 moov atom（疑似两个文件拼在一起）"]
+    return []
+
+
+def run_tool(cmd, timeout):
+    """跑 ffmpeg / ffprobe。返回 (CompletedProcess 或 None, 问题)：超时、可执行文件跑不起来都记成问题，不抛异常。"""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=timeout), None
+    except subprocess.TimeoutExpired:
+        return None, f"{Path(cmd[0]).name} {timeout} 秒没返回"
+    except OSError as e:
+        return None, f"{Path(cmd[0]).name} 跑不起来：{e}"
+
+
+def probe_file(path: Path, ffprobe: str):
+    """ffprobe 读容器时长、帧率，并核对视频轨时长和元数据帧数。返回 ({duration, fps}, [问题])。"""
+    r, err = run_tool([ffprobe, "-v", "error", "-show_entries", "format=duration",
+                       "-show_entries", "stream=codec_type,duration,avg_frame_rate,nb_frames",
+                       "-of", "json", str(path)], 60)
+    if err:
+        return None, [err]
+    if r.returncode != 0:
+        last = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "无输出"
+        return None, [f"ffprobe 读不出文件：{last}"]
+    try:
+        info = json.loads(r.stdout)
+    except ValueError:
+        return None, ["ffprobe 输出不是 JSON"]
+    fmt_dur = info.get("format", {}).get("duration")
+    videos = [x for x in info.get("streams", []) if x.get("codec_type") == "video"]
+    if fmt_dur is None:
+        return None, ["ffprobe 没给出容器时长"]
+    fmt_dur = float(fmt_dur)
+    if not videos:
+        return {"duration": fmt_dur, "fps": None}, ["没有视频轨"]
+    v = videos[0]
+    problems = []
+    if v.get("duration") is not None and abs(float(v["duration"]) - fmt_dur) > VERIFY_DUR_TOL:
+        problems.append(f"容器时长 {fmt_dur:.2f}s 与视频轨时长 {float(v['duration']):.2f}s 差超过 {VERIFY_DUR_TOL}s")
+    try:
+        num, den = (int(x) for x in v.get("avg_frame_rate", "0/0").split("/"))
+        fps = num / den if den else None
+    except ValueError:
+        fps = None
+    nb = v.get("nb_frames")
+    if nb not in (None, "N/A") and fps:
+        want = fmt_dur * fps
+        if abs(int(nb) - want) > VERIFY_FRAME_TOL:
+            problems.append(f"元数据帧数 {nb} 与时长×帧率 {want:.0f} 差超过 {VERIFY_FRAME_TOL} 帧")
+    return {"duration": fmt_dur, "fps": fps}, problems
+
+
+DURATION_RX = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
+FPS_RX = re.compile(r"Stream #\S+.*Video:.*?(\d+(?:\.\d+)?) fps")
+
+
+def probe_with_ffmpeg(path: Path, ffmpeg: str):
+    """没有 ffprobe 时用 `ffmpeg -i` 的文件头读容器时长和帧率。返回 ({duration, fps}, [问题])。"""
+    r, err = run_tool([ffmpeg, "-nostdin", "-hide_banner", "-i", str(path)], 60)
+    if err:
+        return None, [err]
+    m = DURATION_RX.search(r.stderr)
+    if not m:
+        last = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "无输出"
+        return None, [f"ffmpeg 读不出文件头：{last}"]
+    h, mi, sec = m.groups()
+    f = FPS_RX.search(r.stderr)
+    return {"duration": int(h) * 3600 + int(mi) * 60 + float(sec), "fps": float(f.group(1)) if f else None}, []
+
+
+def decode_check(path: Path, ffmpeg: str):
+    """ffmpeg 全片解码到 null。返回 (实际解码出的帧数或 None, [问题])。
+    用了 -v error，stderr 里的每一行都是错误（“Last message repeated N times”也是在重复错误），全都算——
+    按关键词筛会漏掉 “Reference 5 >= 4”“mmco: unref short failure” 这类真错误。
+    截断、损坏的文件解码也常常退出 0，所以只看退出码不够。"""
+    r, err = run_tool([ffmpeg, "-nostdin", "-v", "error", "-i", str(path), "-f", "null", "-progress", "pipe:1", "-nostats", "-"], 600)
+    if err:
+        return None, [err]
+    problems = []
+    if r.returncode != 0:
+        problems.append(f"全片解码退出码 {r.returncode}")
+    err_lines = [ln.strip() for ln in r.stderr.splitlines() if ln.strip()]
+    if err_lines:
+        problems.append(f"全片解码有 {len(err_lines)} 行错误（如：{err_lines[0][:100]}）")
+    frames = re.findall(r"(?m)^frame=(\d+)", r.stdout)
+    return (int(frames[-1]) if frames else None), problems
+
+
+def verify_output(mp4: Path, scene: Path, project=None, tools=None):
+    """验证刚落盘的 mp4 文件。返回 [问题]，空表表示通过；缺工具、工具跑不起来也返回问题，不抛异常。
+    1. atom 结构（双 moov、截断、空头）；2. 时长、帧率（有 ffprobe 时再核对视频轨时长和元数据帧数）；
+    3. 全片解码无错，且实际解码出的帧数 ≈ 时长×帧率；
+    4. 有预期时长时，文件时长不能比预期短超过 0.5s——截断文件的容器时长自洽（moov 在前），单靠 1–3 查不出来；
+    只查下界：动画超过旁白的拍本来就会把场景拖长，QA 已经把 overrun 另记为 error。
+    tools 可以指定 {"ffmpeg": 路径或 None, "ffprobe": 路径或 None}（自检用），不给就用 find_tool 找。"""
+    tools = tools if tools is not None else {n: find_tool(n, project) for n in ("ffmpeg", "ffprobe")}
+    ffmpeg, ffprobe = tools.get("ffmpeg"), tools.get("ffprobe")
+    path = mp4
+    if not path.exists():
+        return [f"落盘文件不存在：{path}"]
+    if not ffmpeg:
+        return [f"找不到 ffmpeg，没法验证落盘文件：{TOOL_HINT}"]
+    problems = check_atoms(path)
+    info, probe_problems = probe_file(path, ffprobe) if ffprobe else probe_with_ffmpeg(path, ffmpeg)
+    problems += probe_problems
+    frames, decode_problems = decode_check(path, ffmpeg)
+    problems += decode_problems
+    if info and info.get("fps") and frames is not None:
+        want = info["duration"] * info["fps"]
+        if abs(frames - want) > VERIFY_FRAME_TOL:
+            problems.append(f"实际解码出 {frames} 帧，与时长×帧率 {want:.0f} 差超过 {VERIFY_FRAME_TOL} 帧")
+    expected, unknown = expected_duration(scene)
+    if expected is not None and info is not None:
+        actual = info["duration"]
+        # 只查下界：文件比预期短就是截断；文件比预期长不算错——动画超过旁白的拍（overrun）
+        # 本来就会把场景拖长，QA 已经把 overrun 另记为 error，这里不再重复判。
+        if actual < expected - VERIFY_DUR_TOL:
+            problems.append(f"文件时长 {actual:.2f}s，比 timeline 预期 {expected:.2f}s 短超过 {VERIFY_DUR_TOL}s")
+    return problems
+
+
 LOCK_TIMEOUT_EXIT = 3  # render.mjs：等渲染锁超时，没有渲染
 
 
-def render(project: Path, name: str, port: str, timeout: int, lock_timeout: float):
+def render(project: Path, name: str, scene: Path, port: str, timeout: int, lock_timeout: float):
+    """渲染一个场景并验证落盘文件。返回 (成功, 用时, 退出码, 验证问题)。
+    渲染成功（退出 0/2 且有报告）后还要过 verify_output：验证失败也算渲染失败，
+    报告删掉、指纹不写——坏文件拿不到“通过”，下次照样重渲。"""
     out = project / "output"
     out.mkdir(exist_ok=True)
     report, log = out / f"{name}.qa.json", out / f"{name}.qa.log"
@@ -194,11 +433,16 @@ def render(project: Path, name: str, port: str, timeout: int, lock_timeout: floa
         except subprocess.TimeoutExpired:
             code = "超时"
     ok = code in (0, 2) and report.exists()
+    verify_problems = []
+    if ok:
+        verify_problems = verify_output(out / f"{name}.mp4", scene, project)
+        if verify_problems:
+            ok = False
     if not ok:
         report.unlink(missing_ok=True)  # 旧版 render.mjs 渲染失败时也会写一份空报告，不能留着冒充“0 error”
     side = out / f"{name}.qa.deps.json"
     side.unlink(missing_ok=True)
-    return ok, time.time() - t0, code
+    return ok, time.time() - t0, code, verify_problems
 
 
 def seconds(f):
@@ -400,10 +644,20 @@ def main():
         elif is_stale:
             row["status"] = "没有报告" if not (out / f"{name}.qa.json").exists() else "报告比代码旧"
 
+    # 渲完要验证落盘文件：要渲染却连 ffmpeg 都找不到，就在渲染前停下，别渲完一个场景才发现验证不了
+    if todo:
+        ffmpeg, ffprobe = find_tool("ffmpeg", project), find_tool("ffprobe", project)
+        if not ffmpeg:
+            print(f"找不到 ffmpeg，渲完没法验证落盘文件，不渲染：{TOOL_HINT}"
+                  f"（也会找工程 node_modules/@ffmpeg-installer 里 Motion Canvas 自带的那份）")
+            sys.exit(TOOL_EXIT)
+        print(f"落盘验证：ffmpeg = {ffmpeg}；"
+              + (f"ffprobe = {ffprobe}" if ffprobe else "没有 ffprobe，只用 ffmpeg（不核对视频轨时长和元数据帧数）"))
+
     for i, row in enumerate(todo, 1):
         print(f"[{i:>2}/{len(todo)}] {row['name']} 渲染中…", end="", flush=True)
         before = fingerprint(Path(row["file"]))
-        ok, spent, code = render(project, row["name"], a.port, a.timeout, a.lock_timeout)
+        ok, spent, code, verify_problems = render(project, row["name"], Path(row["file"]), a.port, a.timeout, a.lock_timeout)
         row.update(rendered=True, renderSeconds=round(spent, 1))
         if ok and fingerprint(Path(row["file"])) == before:  # 渲染期间文件被改过就不记，下次照样重渲
             (out / f"{row['name']}.qa.deps.json").write_text(json.dumps(before, indent=1), encoding="utf-8")
@@ -415,8 +669,13 @@ def main():
             break
         if not ok:
             row["status"] = "渲染失败"
-            row["note"] = f"render.mjs 退出码 {code}，日志 output/{row['name']}.qa.log"
-            print(f" 失败（退出码 {code}，见 output/{row['name']}.qa.log）")
+            if verify_problems:
+                # 渲染本身成功了，但落盘文件验证没过：不写指纹，下次照样重渲
+                row["note"] = "落盘验证失败：" + "；".join(verify_problems)
+                print(f" 落盘验证失败：{'；'.join(verify_problems)}")
+            else:
+                row["note"] = f"render.mjs 退出码 {code}，日志 output/{row['name']}.qa.log"
+                print(f" 失败（退出码 {code}，见 output/{row['name']}.qa.log）")
         else:
             print(f" {spent:.0f}s")
 

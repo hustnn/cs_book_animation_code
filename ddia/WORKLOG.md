@@ -406,3 +406,39 @@ ddia-animation-demo/
   没过时不渲染且退出码 2 / `newbie_pack` 没过不出题包）；第 3 章现有设计跑 `qa_chapter.py`：停在渲染前、列出 48 条 FAIL。
 - **对已有章节的影响**：第 1、2 章已定稿、设计早于这套结构，重跑 `qa_chapter.py` 要加 `--no-design`（`SETUP.md` 已写）；
   第 3 章重做时不加，先把 design.md 改到检查通过。
+
+## 19. 渲染后验证落盘文件、截断的根因、lint 不误报“延伸 · 原文之外”（2026-11-25，skill v1.10.1–v1.10.3，PR #16）
+
+- **原因**（Muse 重做第 3 章 r2 时发现）：渲染 QA 是对渲染中的页面采样，不读落盘的 mp4。两例渲染报成功、QA 0 error，
+  落盘文件却只有一小段：u8-mc3 预期 85.00s 只落盘 18.93s，u4-mc1 预期 132.67s 只落盘 16.17s；文件元数据自洽、
+  解码干净，只有和时间轴的预期时长比才看得出。截断的文件还被写上了指纹，第一次重渲因此被跳过。
+  另外 skill 规定的角标“延伸 · 原文之外”触发了 lint 规则 7 的“原文”。
+- **做法**：
+  - `qa_chapter.py` 每个场景渲完验证落盘文件：顶层 atom（恰好一个 moov、没有越过文件尾）、时长和帧率、全片解码无错且
+    实际解码帧数 ≈ 时长×帧率、文件时长不比时间轴预期短 0.5s 以上（只查下界）。验证失败记为渲染失败、删报告、不写指纹。
+  - lint 规则 7 改为 `原文(?!之外)`。
+- **review 时补的修正**（同一个 PR）：
+  - 原实现直接按名字调用 `ffprobe` / `ffmpeg`，机器上没装时第一个场景渲完就 `FileNotFoundError` 崩掉、不写汇总
+    （本机复现：PATH 里两个都没有）。改成按顺序找：环境变量 `FFMPEG` / `FFPROBE` → PATH → 工程
+    `node_modules/@ffmpeg-installer` 里 Motion Canvas 自带的 ffmpeg → ffmpeg 旁边的 ffprobe。没有 ffprobe 时用
+    `ffmpeg -i` 读时长和帧率（跳过视频轨时长、元数据帧数两项）；要渲染却连 ffmpeg 都找不到，渲染前就停下（退出码 4）。
+    工具跑不起来、超时都记成验证问题，不再抛异常。
+  - 解码检查：`-v error` 下每一行都是错误，全部计入（原来按关键词筛，会漏掉 “Reference 5 >= 4” 这类）；
+    另外数实际解码出的帧数，和时长×帧率比。
+  - 预期时长：先去掉注释再数 `beat('…')`，注释里提到的拍不计入。
+  - 文档里“不看法盘文件”改为“不看落盘文件”（4 处）。
+- **验证**：`qa_selftest.py`（新增只有 ffmpeg 的模式、缺 ffmpeg 不抛异常、环境变量优先、注释不计入）；
+  `examples.py check`；本机无 ffprobe、只有工程自带 ffmpeg 时跑通。
+- **根因**（同一个 PR 里查清并修掉，skill v1.10.3）：渲染中途有文件被改，而且这个文件不在场景的热更新范围里——
+  `project.ts`、`lib/theme.ts`、`headless.ts` 这类入口直接引用的文件——Vite 就整页刷新。`headless.ts` 在新页面里从头再渲一遍；
+  `@motion-canvas/ffmpeg` 服务端只有一个编码会话的位置，新的 `start` 把它换掉，上一段的 ffmpeg 进程没人结束、一直挂着。
+  第二遍渲完写出完整文件，`render.mjs` 看到的是新页面的结果（退出 0，QA 报告也来自完整的第二遍，所以 0 error）；
+  收尾杀掉 Vite 进程组时，挂着的 ffmpeg 收到 SIGTERM 正常收尾，把重载前那一段写回同一个文件——于是文件元数据自洽、只有前一段。
+  - 复现（第 3 章 u4-mc1，127.83 秒，开渲 8 秒时改文件）：改 `src/project.ts` → 落盘 63.5 秒 / 1905 帧；改 `src/lib/theme.ts` → 70.8 秒；
+    对照：改另一个场景文件只触发热更新，落盘完整。本机复现的文件有解码错误，Muse 那两例解码干净——两种都会被落盘验证拦下。
+  - 可能的触发：`qa_selftest.py`、`examples.py` 临时改 `project.ts` 是在等渲染锁之前；和一章的渲染同时跑就会撞上。
+    重做时往 `project.ts` 登记新场景也一样。（Muse 那两次渲染的日志里应该有一行 `[vite] page reload <文件>`，会写明是哪个文件。）
+  - 修法：`vite.config.ts` 在 `MC_RENDER_NO_WATCH` 设上时不监视源码，`render.mjs` 启动 Vite 时设上——同样的两次改动，落盘完整、
+    没有刷新；`render.mjs` 再记主框架导航次数，渲染期间页面被重新加载就按失败处理、不写 QA 报告；工程的 `vite.config.ts`
+    是旧版时 `render.mjs` 先提醒。第 1–3 章工程的 `render.mjs`、`vite.config.ts` 已同步。
+  - 自检新增 2 条：渲染中途改 `theme.ts`，同步后产物完整、退出 0；换回旧 `vite.config` 时 `render.mjs` 报出页面重载、退出码非 0。

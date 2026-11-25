@@ -3,6 +3,9 @@
 //   1. 启动 Vite dev server（ffmpeg 导出器通过 Vite HMR WebSocket 和浏览器通信，所以必须是 dev server）
 //   2. Puppeteer 打开 public/headless.html（逻辑在 src/headless.ts）
 //   3. 轮询 window.__renderResult，结束后退出、放锁
+// 渲染用的 Vite 不监视源码（MC_RENDER_NO_WATCH=1，见 vite.config.ts）：渲染中途改文件不会让页面刷新。
+// 万一页面还是被重新加载了（vite.config.ts 没同步、有人手动刷新），这次渲染按失败处理：重载前那段的 ffmpeg 不会结束，
+// 关掉 Vite 时会把半截文件写回 output/，产物不可信。
 //
 // 用法（在 motion-canvas/ 目录下）：
 //   node scripts/render.mjs <场景名> [--qa [--strict]] [--port 9000] [--timeout 600] [--lock-timeout 90] [--w 1280 --h 720 --fps 30]
@@ -15,7 +18,7 @@
 // 依赖：devDependencies 里的 vite、puppeteer；@motion-canvas/vite-plugin 和 @motion-canvas/ffmpeg 已在 vite.config.ts 启用。
 
 import {spawn} from 'node:child_process';
-import {existsSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {acquire} from './render-lock.mjs';
 
@@ -134,9 +137,16 @@ let browser;
 try {
   // 直接跑本地 vite（npx 偶发 EPERM 写日志失败）；没有本地安装时退回 npx
   const viteArgs = ['--port', String(PORT), '--strictPort', '--host', '127.0.0.1'];
+  // 渲染期间不监视源码（vite.config.ts 读这个变量）；工程的 vite.config.ts 是旧版、没读它时先提醒
+  const viteEnv = {...process.env, MC_RENDER_NO_WATCH: '1'};
+  const cfg = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs'].map(f => `${ROOT}${f}`).find(existsSync);
+  if (cfg && !readFileSync(cfg, 'utf8').includes('process.env.MC_RENDER_NO_WATCH')) {
+    console.warn('[render] 警告：vite.config 没有同步 skill 的版本（渲染时关掉文件监视）。渲染中途改源码会让页面重载、产物被截断；'
+      + '照 skill 的 assets/motion-canvas/render/vite.config.ts 更新');
+  }
   vite = existsSync(VITE_BIN)
-    ? spawn(process.execPath, [VITE_BIN, ...viteArgs], {cwd: ROOT, stdio: 'inherit', detached: true})
-    : spawn('npx', ['vite', ...viteArgs], {cwd: ROOT, stdio: 'inherit', detached: true});
+    ? spawn(process.execPath, [VITE_BIN, ...viteArgs], {cwd: ROOT, stdio: 'inherit', detached: true, env: viteEnv})
+    : spawn('npx', ['vite', ...viteArgs], {cwd: ROOT, stdio: 'inherit', detached: true, env: viteEnv});
   await waitForServer();
   console.log(`[render] vite ready, rendering ${SCENE || '(whole project)'} ...`);
   const {default: puppeteer} = await import('puppeteer'); // 动态 import：--help 和参数检查不需要装依赖
@@ -145,6 +155,11 @@ try {
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
   });
   const page = await browser.newPage();
+  // 主框架每导航一次加一：第一次是打开 headless.html，之后再有就是页面被重新加载了
+  let navigations = 0;
+  page.on('framenavigated', frame => {
+    if (frame === page.mainFrame()) navigations += 1;
+  });
   let pageFailed = null;
   page.on('console', msg => console.log('[page]', msg.type(), msg.text()));
   page.on('pageerror', err => {
@@ -191,8 +206,16 @@ try {
       const secs = ((Date.now() - t0) / 1000).toFixed(1);
       console.log(`[render] finished: ${state.result} (0 = Success) in ${secs}s`);
       process.exitCode = state.result === 0 ? 0 : 1;
-      if (QA && state.result !== 0) {
-        // 渲染失败（场景抛错等）时探针没跑完，报告是空的或不全：不写，免得被当成“0 error”
+      const reloads = navigations - 1;
+      if (reloads > 0) {
+        // 重载后页面从头又渲染了一遍；重载前那段的 ffmpeg 没人结束，关 Vite 时会把半截文件写回 output/
+        console.error(`[render] 渲染期间页面被重新加载了 ${reloads} 次（源码被改动、Vite 整页刷新）：`
+          + `output/${SCENE || 'project'}.mp4 会被重载前那段的半截文件覆盖，按失败处理。`
+          + '渲染时别改 src/ 下的文件；vite.config.ts 要同步 skill 的版本（渲染时关掉文件监视）');
+        process.exitCode = 1;
+      }
+      if (QA && (state.result !== 0 || reloads > 0)) {
+        // 渲染失败（场景抛错、页面被重载）时报告不可信：不写，免得被当成“0 error”
         rmSync(`${ROOT}output/${SCENE || 'project'}.qa.json`, {force: true});
         console.error('[qa] 渲染失败，不写 QA 报告');
       } else if (QA) {
