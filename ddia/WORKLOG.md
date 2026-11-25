@@ -407,7 +407,7 @@ ddia-animation-demo/
 - **对已有章节的影响**：第 1、2 章已定稿、设计早于这套结构，重跑 `qa_chapter.py` 要加 `--no-design`（`SETUP.md` 已写）；
   第 3 章重做时不加，先把 design.md 改到检查通过。
 
-## 19. 渲染后验证落盘文件、lint 不误报“延伸 · 原文之外”（2026-11-25，skill v1.10.1–v1.10.2，PR #16）
+## 19. 渲染后验证落盘文件、截断的根因、lint 不误报“延伸 · 原文之外”（2026-11-25，skill v1.10.1–v1.10.3，PR #16）
 
 - **原因**（Muse 重做第 3 章 r2 时发现）：渲染 QA 是对渲染中的页面采样，不读落盘的 mp4。两例渲染报成功、QA 0 error，
   落盘文件却只有一小段：u8-mc3 预期 85.00s 只落盘 18.93s，u4-mc1 预期 132.67s 只落盘 16.17s；文件元数据自洽、
@@ -429,4 +429,16 @@ ddia-animation-demo/
   - 文档里“不看法盘文件”改为“不看落盘文件”（4 处）。
 - **验证**：`qa_selftest.py`（新增只有 ffmpeg 的模式、缺 ffmpeg 不抛异常、环境变量优先、注释不计入）；
   `examples.py check`；本机无 ffprobe、只有工程自带 ffmpeg 时跑通。
-- **未做**：渲染报成功、文件却只有一小段的根因（`render.mjs` / 渲染器为什么提前结束）还没查，这里只负责拦住。
+- **根因**（同一个 PR 里查清并修掉，skill v1.10.3）：渲染中途有文件被改，而且这个文件不在场景的热更新范围里——
+  `project.ts`、`lib/theme.ts`、`headless.ts` 这类入口直接引用的文件——Vite 就整页刷新。`headless.ts` 在新页面里从头再渲一遍；
+  `@motion-canvas/ffmpeg` 服务端只有一个编码会话的位置，新的 `start` 把它换掉，上一段的 ffmpeg 进程没人结束、一直挂着。
+  第二遍渲完写出完整文件，`render.mjs` 看到的是新页面的结果（退出 0，QA 报告也来自完整的第二遍，所以 0 error）；
+  收尾杀掉 Vite 进程组时，挂着的 ffmpeg 收到 SIGTERM 正常收尾，把重载前那一段写回同一个文件——于是文件元数据自洽、只有前一段。
+  - 复现（第 3 章 u4-mc1，127.83 秒，开渲 8 秒时改文件）：改 `src/project.ts` → 落盘 63.5 秒 / 1905 帧；改 `src/lib/theme.ts` → 70.8 秒；
+    对照：改另一个场景文件只触发热更新，落盘完整。本机复现的文件有解码错误，Muse 那两例解码干净——两种都会被落盘验证拦下。
+  - 可能的触发：`qa_selftest.py`、`examples.py` 临时改 `project.ts` 是在等渲染锁之前；和一章的渲染同时跑就会撞上。
+    重做时往 `project.ts` 登记新场景也一样。（Muse 那两次渲染的日志里应该有一行 `[vite] page reload <文件>`，会写明是哪个文件。）
+  - 修法：`vite.config.ts` 在 `MC_RENDER_NO_WATCH` 设上时不监视源码，`render.mjs` 启动 Vite 时设上——同样的两次改动，落盘完整、
+    没有刷新；`render.mjs` 再记主框架导航次数，渲染期间页面被重新加载就按失败处理、不写 QA 报告；工程的 `vite.config.ts`
+    是旧版时 `render.mjs` 先提醒。第 1–3 章工程的 `render.mjs`、`vite.config.ts` 已同步。
+  - 自检新增 2 条：渲染中途改 `theme.ts`，同步后产物完整、退出 0；换回旧 `vite.config` 时 `render.mjs` 报出页面重载、退出码非 0。

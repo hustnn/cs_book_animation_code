@@ -244,4 +244,5 @@ ffmpeg -i <unit>-silent.mp4 -i <unit>-voice.wav -i subs/<unit>.srt -map 0:v -map
 | 复制出的块（“复制一份写进日志”）先显形、再等着出发，和原块叠在一起两三个采样点（QA `covered` / `text-overlap`） | 复制块出发时才淡入（淡入和移动放在同一个 `all` 里） |
 | `qa-ignore-*` 的 key 重复：后建的节点拿不到 key，被当成普通线检查 | key 在场景里必须唯一，划线这类自动生成的加序号（`schemas.ts` 的 `KV.stale()` 已处理） |
 | `Icon` 组件在无头渲染时出不来：它要在线请求图标库 | 图标用本地 SVG 文件配 `Img` / `SVG` |
+| 渲染中途改了 `project.ts`、`lib/theme.ts`、`headless.ts` 这类文件（自己改、或 `qa_selftest.py` / `examples.py` 临时登记场景）：Vite 整页刷新，页面从头再渲一遍；`@motion-canvas/ffmpeg` 只有一个编码会话的位置，上一段的 ffmpeg 没人结束，关 Vite 时它把重载前那段写回 `output/<场景>.mp4`。渲染报成功、QA 0 error（报告来自重渲那一遍），文件却只有前一段（实测 127.8 秒的场景，开渲 8 秒时改 `project.ts`，落盘 63.5 秒）。只改场景文件不受影响（只热更新，不刷新） | 渲染用的 Vite 不监视源码：`vite.config.ts` 读 `MC_RENDER_NO_WATCH`、`render.mjs` 启动 Vite 时设上（两个文件都要同步 skill 的版本）；万一页面还是被重载，`render.mjs` 按失败处理；`qa_chapter.py` 的落盘验证兜底 |
 | 嵌套数组当子节点：`rows.map(row => row.map(...))` 双重嵌套数组传给 fragment 的 children，里层数组被静默丢掉、整行元素不渲染（曾因此丢了一张表的整行）；QA 只检查文字是否出现、检不出“该出现却没出现” | 用 `flatMap` 展平再传；逐拍看全分辨率帧时核对每张表/每组元素的行数与原文一致 |

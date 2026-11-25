@@ -18,6 +18,9 @@
   4. 渲染锁（用临时锁目录，不碰真实的锁）：排队、超时不运行、死锁自动清、不删活锁、嵌套不自等、被 kill 也放锁，
      Python（render_lock.py）与 Node（render-lock.mjs）两边互认，render.mjs 拿不到锁时不渲染；
      以及 render.mjs 的 --help 和不认识的参数不会启动渲染。约 20 秒，不需要 --project。
+  6. 渲染中途改源码：渲染用的 Vite 不监视文件，中途改 src/lib/theme.ts 产物照样完整；vite.config.ts 没同步
+     （渲染时还监视文件）时，render.mjs 发现页面被重新加载、按失败处理。会把工程里的 theme.ts、vite.config.ts
+     临时改掉再恢复，渲出的 qa-fixture.mp4 也先备份再恢复。
   5. 落盘验证：对渲出的 qa-fixture.mp4 现场造截断、双 moov、NAL 损坏、空头文件和预期时长对不上的复现，
      确认 verify_output 全部拦下、干净文件通过；有 ffprobe 和只有 ffmpeg 两种模式都测；缺 ffmpeg 时返回问题、不抛异常；
      注释里的 beat('…') 不计入预期时长。坏文件用例不进版本库。
@@ -27,12 +30,14 @@
 import argparse
 import filecmp
 import json
+import re
 import os
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -362,6 +367,8 @@ def check_qa(project: Path, port: str, keep: bool):
         mine, theirs = SKILL / "assets" / "motion-canvas" / name, lib / name
         if not theirs.exists() or not filecmp.cmp(mine, theirs, shallow=False):
             print(f"[warn] 工程里的 src/lib/{name} 与 skill 的不一致（或不存在）：自检测的是工程里的版本")
+    if not (project / "vite.config.ts").exists() or not filecmp.cmp(RENDER / "vite.config.ts", project / "vite.config.ts", shallow=False):
+        print("[warn] 工程里的 vite.config.ts 与 skill 的不一致（或不存在）：渲染时可能还在监视源码，照 SKILL.md 的复制表补上")
     for name in SCRIPT_FILES:
         theirs = project / "scripts" / name
         if not theirs.exists() or not filecmp.cmp(RENDER / name, theirs, shallow=False):
@@ -398,6 +405,7 @@ def check_qa(project: Path, port: str, keep: bool):
             lock = subprocess.run([sys.executable, "-I", str(LOCK_PY), "status", "--json"], capture_output=True, text=True)
             owner = (json.loads(lock.stdout).get("owner") or {}) if lock.returncode == 0 else {}
             rows.append(("渲染完放了渲染锁", "qa-fixture" not in str(owner.get("cmd", "")), f"锁还在：{owner}"))
+            rows += check_render_reload(project, port)
     finally:
         proj.write_text(original, encoding="utf-8")
         if not keep:
@@ -416,6 +424,64 @@ def check_qa(project: Path, port: str, keep: bool):
         found = [f for f in report if f["beat"] == beat]
         got = ", ".join(sorted({f"{f['severity']}:{f['kind']}" for f in found})) or "无"
         rows.append((f"QA {beat} 期望 {want}", verdict(want, found), f"实际 {got}"))
+    return rows
+
+
+def check_render_reload(project: Path, port: str):
+    """渲染中途改源码（需要 qa-fixture 已登记在工程里、output/qa-fixture.mp4 已渲出）。
+    1. 用 skill 的 vite.config.ts：中途改 src/lib/theme.ts，页面不刷新，产物时长完整，render.mjs 退出 0；
+    2. 换成不关文件监视的旧 vite.config：中途改 theme.ts，页面被重新加载，render.mjs 报出来、退出码非 0。
+    theme.ts、vite.config.ts、qa-fixture.mp4 结束后恢复原样。"""
+    sys.path.insert(0, str(SKILL / "scripts"))
+    import qa_chapter  # noqa: E402
+    rows = []
+    theme = project / "src" / "lib" / "theme.ts"
+    cfg = project / "vite.config.ts"
+    mp4 = project / "output" / "qa-fixture.mp4"
+    scene = project / "src" / "scenes" / "qa-fixtures" / "qa-fixture.tsx"
+    if not (theme.exists() and cfg.exists() and mp4.exists() and scene.exists()):
+        return [("渲染中途改源码：需要 theme.ts、vite.config.ts 和已渲出的 qa-fixture", False, "缺文件")]
+    keep = {theme: theme.read_bytes(), cfg: cfg.read_bytes(), mp4: mp4.read_bytes()}
+
+    def render_touching():
+        """渲染 qa-fixture；Vite 起来 3 秒后（渲染进行中）在 theme.ts 末尾追加一行注释。返回 (退出码, 输出, 改过没有)。"""
+        mp4.unlink(missing_ok=True)
+        proc = subprocess.Popen(["node", "scripts/render.mjs", "qa-fixture", "--port", port], cwd=project,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, stdin=subprocess.DEVNULL)
+        out, touched = [], []
+
+        def touch():
+            with open(theme, "a", encoding="utf-8") as fh:
+                fh.write(f"\n// qa_selftest：渲染中途改动 {time.time()}\n")
+            touched.append(True)
+        timer = None
+        for line in proc.stdout:
+            out.append(line)
+            if "vite ready" in line and timer is None:
+                timer = threading.Timer(3.0, touch)
+                timer.start()
+        proc.wait()
+        if timer:
+            timer.cancel()
+        theme.write_bytes(keep[theme])
+        return proc.returncode, "".join(out), bool(touched)
+
+    try:
+        code, out, touched = render_touching()
+        problems = qa_chapter.verify_output(mp4, scene, project) if mp4.exists() else ["没有产物"]
+        rows.append(("渲染中途改 theme.ts（vite.config 已同步）：页面不刷新、产物完整、退出 0",
+                     touched and code == 0 and "重新加载" not in out and not problems,
+                     f"改过={touched} 退出码={code} 问题={problems}"))
+        old_cfg = keep[cfg].decode("utf-8")
+        old_cfg = re.sub(r"\n[^\n]*server:[^\n]*MC_RENDER_NO_WATCH[^\n]*\n", "\n", old_cfg)
+        cfg.write_text(old_cfg, encoding="utf-8")
+        code, out, touched = render_touching()
+        rows.append(("渲染中途改 theme.ts（旧 vite.config，还在监视文件）：render.mjs 发现页面重载、按失败处理",
+                     touched and code != 0 and "重新加载" in out and "server:" not in old_cfg,
+                     f"改过={touched} 退出码={code}"))
+    finally:
+        for path, data in keep.items():
+            path.write_bytes(data)
     return rows
 
 

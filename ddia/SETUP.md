@@ -87,6 +87,8 @@ cd ch01/motion-canvas && node scripts/render.mjs <场景名> --qa
 # 第 1、2 章已定稿、设计早于这套结构，重跑 qa_chapter 时加 --no-design；第 3 章起不要加，先把 design.md 改到检查通过。
 # skill v1.10.1 起 qa_chapter 渲完会验证落盘的 mp4，要用 ffmpeg：默认用工程 node_modules 里 Motion Canvas 自带的那份，
 # 也可以 export FFMPEG=/path/to/ffmpeg；装了 ffprobe（PATH 里或 FFPROBE）会多核对视频轨时长和元数据帧数。
+# skill v1.10.3 起渲染用的 Vite 不监视源码（vite.config.ts 读 MC_RENDER_NO_WATCH，render.mjs 启动时设上）：渲染中途改
+# project.ts、lib/theme.ts 会让页面刷新、产物被截断。各章工程的 vite.config.ts、scripts/render.mjs 要和 skill 的一致。
 
 # Manim 单场景（-qm：720p 中等质量）：用 render_lock.py run 包一层，和 Motion Canvas 共用同一把渲染锁
 cd ch01/manim && python ../../../skills/textbook-to-animation/scripts/render_lock.py run <场景类> -- \

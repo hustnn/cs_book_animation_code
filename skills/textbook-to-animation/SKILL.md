@@ -3,7 +3,7 @@ name: textbook-to-animation
 description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计（含机制图式：数据有身份、会移动，不是框和线）、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及教学设计检查、静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查；自带示例（一个完整单元和两个工具的技法图库）可直接渲染参照。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.10.2"
+  version: "1.10.3"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -97,7 +97,7 @@ metadata:
 | `assets/motion-canvas/render/headless.html` | `motion-canvas/public/headless.html` | 加载上面的入口 |
 | `assets/motion-canvas/render/render.mjs` | `motion-canvas/scripts/render.mjs` | 渲染驱动（在 `motion-canvas/` 下运行） |
 | `assets/motion-canvas/render/render-lock.mjs` | `motion-canvas/scripts/render-lock.mjs` | 渲染锁：`render.mjs` 自动用，整台机器同一时间只跑一个渲染 |
-| `assets/motion-canvas/render/vite.config.ts` | `motion-canvas/vite.config.ts` | Vite 插件配置，文件头写了依赖清单 |
+| `assets/motion-canvas/render/vite.config.ts` | `motion-canvas/vite.config.ts` | Vite 插件配置，文件头写了依赖清单；渲染时关掉源码监视（渲染中途改文件会让产物被截断，见 `references/motion-canvas.md` 坑表） |
 | `assets/manim/theme.py`、`assets/manim/beats.py` | `manim/` | Manim 版的 theme 和 `Beats` |
 
 `scripts/` 下的脚本直接从 skill 目录运行，不用复制。`assets/motion-canvas/qa-fixtures/` 是自检规则的通用测试用例，不用复制：`scripts/qa_selftest.py --project motion-canvas` 会临时放进工程跑一遍并自动清理（新环境搭好后先跑一次）。
@@ -276,6 +276,9 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
   （恰好一个 moov、没有 atom 越过文件尾）、ffprobe 容器/视频轨时长与帧数、全片解码无错、文件时长不比 timeline
   预期短（只查下界：动画超过旁白的拍本来就会把场景拖长）。验证失败的场景记为渲染失败、报告删掉、不写指纹，
   下次照样重渲。QA 是对直播页面采样，不看落盘文件，渲染报成功不等于文件可用。
+  已查到的一种成因：渲染中途改了 `project.ts`、`lib/theme.ts` 这类文件，Vite 整页刷新、从头再渲一遍，上一段的 ffmpeg
+  没人结束，关 Vite 时把半截文件写回。现在渲染用的 Vite 不监视源码（`vite.config.ts` 读 `MC_RENDER_NO_WATCH`），
+  万一页面还是被重载，`render.mjs` 按失败处理。**渲染期间别改 `src/` 下的文件**（包括别的工具改 `project.ts`）。
   验证要用 ffmpeg（环境变量 `FFMPEG` → PATH → 工程里 Motion Canvas 自带的那份）；有 ffprobe 时多核对视频轨时长和元数据帧数。
   要渲染却连 ffmpeg 都找不到，`qa_chapter.py` 渲染前就停下（退出码 4）。
 - 渲染后：`python <skill>/scripts/sample_frames.py <成片或场景视频> --timeline timeline/<unit>.json [--scene <场景>.tsx] -o <输出目录>`：
