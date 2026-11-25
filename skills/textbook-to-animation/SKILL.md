@@ -1,9 +1,9 @@
 ---
 name: textbook-to-animation
-description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计（含机制图式：数据有身份、会移动，不是框和线）、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及教学设计检查、静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查；自带示例（一个完整单元和两个工具的技法图库）可直接渲染参照。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
+description: 把教材、技术书、课程讲义的章节改编成 Motion Canvas + Manim 动画讲解视频的完整流程——分级要点清单、教学设计（含机制图式：数据有身份、会移动，不是框和线；整章开篇的章标题和路线图、每个单元开头的站牌）、旁白先行的分镜（beat sheet）、MC/Manim 分工、音频驱动的场景实现、无头渲染与拼接混音，以及以原文为准的多轮“生成 → 审查（忠实 / 反查原文 / 语义 / 观感）→ 修改”迭代（每轮产物单独保留便于对比），以及教学设计检查、静态 lint、渲染 QA、抽帧定格测量、配音检查等自动化检查；自带示例（一个完整单元和两个工具的技法图库）可直接渲染参照。只要用户要把书或论文的某一章、某一节做成动画或讲解视频，要为这类视频写脚本、分镜、场景代码，或要对这类视频做质量 review，或在提到 Motion Canvas、Manim 的同时提到书、章节、教材、知识点，就使用本 skill，即使用户没提“流程”或“skill”。Turns textbook chapters into animated explainer videos with Motion Canvas and Manim.
 compatibility: 适用于任何支持 Agent Skills 规范的编码代理。自带脚本需要 Python 3.8+（只用标准库）；制作视频还需要 Node.js 18+ 与 Motion Canvas、ffmpeg，用 Manim 时需要 Python 3.10+ 与 manim 0.22+。
 metadata:
-  version: "1.10.4"
+  version: "1.11.0"
   repository: "https://github.com/hustnn/cs_book_animation_code"
 ---
 
@@ -42,9 +42,9 @@ metadata:
 
 | 步骤 | 照着写（示例） | 写完跑 |
 |---|---|---|
-| 2 教学设计 | `examples/lsm/design.md` | `scripts/check_design.py design.md --beats-json beats.json`：FAIL 清零才进第 3 步（`qa_chapter.py` 渲染前会再查一次，没过直接停、不渲染） |
-| 3 分镜 | `examples/lsm/beats.md` | 只读画面列做空框测试 |
-| 6 选画面手段、写场景 | `references/techniques.md` 按场景反查技法；`examples/mc-gallery/`、`examples/manim-gallery/`、`examples/lsm/scenes/` 的代码 | `lint_scenes.py`（含“画面手段”报告）、`qa_chapter.py` |
+| 2 教学设计 | `examples/lsm/design.md`（讲机制的单元）、`examples/opening/design.md`（整章开篇：章标题、主旨、路线图） | `scripts/check_design.py design.md --beats-json beats.json`：FAIL 清零才进第 3 步（`qa_chapter.py` 渲染前会再查一次，没过直接停、不渲染） |
+| 3 分镜 | `examples/lsm/beats.md`（w0 是单元站牌）、`examples/opening/beats.md`（开篇 o1–o9） | 只读画面列做空框测试 |
+| 6 选画面手段、写场景 | `references/techniques.md` 按场景反查技法；`examples/mc-gallery/`、`examples/manim-gallery/`、`examples/lsm/scenes/` 的代码；开头用 `examples/opening/scenes/` | `lint_scenes.py`（含“画面手段”报告、“开头有标题”门槛）、`qa_chapter.py` |
 | 7 新手测试 | design.md 里的学习目标 | `scripts/newbie_pack.py` 出题包，交给没有上下文的会话作答 |
 
 没用过的技法、没见过的图式，先 `python <skill>/scripts/examples.py render <示例> --project <motion-canvas 工程>` 看一眼成片
@@ -92,6 +92,8 @@ metadata:
 | `assets/motion-canvas/layout.ts` | `motion-canvas/src/lib/layout.ts` | 防压字的摆位写法：`attach`（标签跟着对象的边走）、`row`/`column`（按尺寸排开）、`edgePointIn`（停在节点旁） |
 | `assets/motion-canvas/qa.ts` | `motion-canvas/src/lib/qa.ts` | 渲染 QA：`--qa` 时逐拍检查文字被压、被线穿过、骑边、互叠、出画，标签先于对象出现（orphan），动画超时（overrun）与做完后静止过久（idle） |
 | `assets/motion-canvas/card.tsx` | `motion-canvas/src/lib/card.tsx` | 文字卡（≤ 3 行，旁白驱动），只用于引言和小结 |
+| `assets/motion-canvas/opening.tsx` | `motion-canvas/src/lib/opening.tsx` | 开头：整章开篇的章标题 `ChapterTitle`、全章路线图 `Roadmap`、每个单元第一拍的站牌 `UnitTitle`（收起后都变成左上角页眉） |
+| `examples/opening/scenes/chapter.ts` | `motion-canvas/src/lib/chapter.ts`（改成本章的内容） | 一章一份的章数据：章号、章名、路线图的部分和站；开篇、站牌、小结都从这里取，和 design.md 开篇单元的路线图表一一对应 |
 | `assets/motion-canvas/schemas.ts` | `motion-canvas/src/lib/schemas.ts` | 图式组件：有身份的数据块 `KV`、槽位容器 `Slots`（有序插入时其余让位）、计量条、计数器、比特行、镜头 `Cam`、分区框和“延伸 / 示意”角标（用法见 `references/visual-schemas.md`） |
 | `assets/motion-canvas/render/headless.ts` | `motion-canvas/src/headless.ts` | 无头渲染入口 |
 | `assets/motion-canvas/render/headless.html` | `motion-canvas/public/headless.html` | 加载上面的入口 |
@@ -173,13 +175,31 @@ metadata:
    分镜照着它一步一拍写；先具体走一遍，再抽象成一般规律。
 8. **要点 → 载体映射**：每条 P0/P1 要点落到哪一拍、由画面还是旁白承载。
 9. **叙事顺序**：默认跟原书的论证顺序；要调整就写明理由。**新增内容要编织进叙事，不要追加成补丁段。**
-10. **总—分—总**：整章开头加一段 30–60 秒的总述，先总说本章讲什么——核心思想加各单元的路线，再进入分述；末单元收束全章。不要一上来就讲第一个单元，观众不知道这章要去哪。
+10. **总—分—总**：整章先总说、再分述、最后收束，具体做法见下面的“开篇与站牌”。
+
+**开篇与站牌：观众先知道这章讲什么、分几部分、现在讲到哪，再进入机制。** 一上来就讲第一个机制，开头就显得突兀；
+十几个单元连着放，观众也不知道自己在哪。整章第一个单元是**开篇单元**（`## 单元 U0：开篇`，P0 机制写“无（开篇）”），45–90 秒，顺序固定：
+
+1. **标题拍（第一拍）**：亮出“第 N 章”和章名，旁白念出来（“第三章，存储与检索。”）；标题浮现要 1–2 秒，给这一拍加演示拍 `hold`。
+2. **这章讲什么（1–2 拍）**：一句话主旨——这一章回答什么问题、核心取舍是什么。画面照样要有东西在动（一条数据走个来回、两根计量条此消彼长），
+   不是文字卡；不讲机制细节。
+3. **和上一章的关系（1 拍，第一章省略）**：接着上一章的哪里往下讲。
+4. **路线图（一部分一拍）**：把全章的单元分成 2–4 个部分，每部分一行——部分名、它回答的问题、一串站（一个单元一站，站名 ≤ 5 个字）；
+   一部分一拍逐行点亮，旁白念到哪一站，哪一站闪一下。
+5. **下一站（最后一拍）**：路线图上标出第一站，进入第一个单元。
+
+**每个内容单元的第一拍是站牌**：“章名 · 第 k 站 / 共 n 站”、单元标题、迷你路线条（走过的实心、当前的黄色带圈），旁白念出这一站的名字
+（“第三站：排好序的段。”）；下一拍开头收成左上角的页眉。**末单元**（小结）用同一张路线图收束：全部点亮，逐部分回收一句结论。
+三样都用 `lib/opening.tsx`（`ChapterTitle`、`Roadmap`、`UnitTitle`），章的数据写在 `lib/chapter.ts`，和 design.md 的路线图表一一对应。
+样本：开篇 `examples/opening/`（设计、分镜、场景、成片关键帧），站牌 `examples/lsm/` 的 w0。
 
 design.md 照 `references/templates.md` 的模板写，完整样本是 `examples/lsm/design.md`（P0 机制一行、带 [走查] 的学习目标、
-图式四问、每个机制一节“### 机制走查：…”、“### 深度延伸”表）。总述、小结这类不讲机制的单元写“P0 机制：无（总述）”。
+图式四问、每个机制一节“### 机制走查：…”、“### 深度延伸”表）和 `examples/opening/design.md`（开篇单元：章标题、一句话主旨、
+和上一章的关系、开篇拍、“### 路线图”表）。小结这类不讲机制的单元写“P0 机制：无（小结）”。
 
 **门槛：** `check_design.py` 没有 FAIL（P0 机制 ≤ 3、有 [走查] 题、图式四问都填了、每个 P0 机制的走查 ≥ 3 步且 ≥ 4 拍、
-深度延伸都有依据）；每条 P0 都有画面动作，每条 P1 都有承载的拍；单元之间没有重复的结论句。
+深度延伸都有依据；整章有开篇单元且排第一，章标题、一句话主旨、开篇拍都写了，路线图 2–4 个部分、覆盖全部单元且顺序一致，
+标题拍是第一拍、念出了章名）；每条 P0 都有画面动作，每条 P1 都有承载的拍；单元之间没有重复的结论句。
 这道门槛是硬的：`qa_chapter.py` 每次渲染前都重跑它，没过就停下、不渲染（退出码 2）；`newbie_pack.py` 对没过的单元不出题包。
 所以跳过这一步、或者改坏了 design.md，后面的渲染和新手测试都走不下去。
 
@@ -204,6 +224,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
   实现时据此留出生长通道、把标签挂到对象上——文字被压、骑边、读错对象，大多是终态没想清楚。
 - 旁白像讲给同事听：短句，先结论后细节，术语第一次出现时给中英对照。
 - 数字放在画面里，并让它“有感觉”：换算成日常尺度，或和另一个数字对比。
+- **开头**：开篇单元照上面的五段写（标题拍 → 主旨 → 和上一章 → 路线图一部分一拍 → 下一站），样本 `examples/opening/beats.md`；
+  每个内容单元的第一拍是站牌拍（旁白念“第 k 站：单元名”），钩子从第二拍开始，样本 `examples/lsm/beats.md` 的 w0。
 - 结尾一拍回扣钩子问题；需要时加一拍“停下来想一想”。
 - 写完之后，**只读旁白**检查一遍：要点全吗、逻辑顺吗；**只读画面列**再检查一遍：能看出机制吗。
 
@@ -241,6 +263,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - **先挑技法**：按 design.md 定的图式，到 `references/techniques.md` 第 2 节按教学场景反查技法（Code 逐行、reparent、Layout、
   派生量、圆弧、Latex、虚线流动、沿曲线移动、SVG 图标、后台任务、遮罩聚光；Manim 的 ValueTracker、公式改写、推镜头、Graph、
   排序动画、表格）。没用过的先渲染对应的示例看一眼，再照示例的代码写。
+- **开头先亮标题**：开篇单元第一个场景用 `ChapterTitle` + `Roadmap`，每个单元第一个场景用 `UnitTitle`（`lib/opening.tsx`，数据取 `lib/chapter.ts`）；
+  收起后的页眉就在左上角，场景里不要再手写一份同位置的标题。单元的第一个场景用 Motion Canvas 做（lint 只查得到 MC 场景）。
 - **按图式写场景**：数据块、容器、计数器、镜头用 `lib/schemas.ts`（`KV`、`Slots`、`Counter`、`Meter`、`Bits`、`Cam`），
   场景节点分 world（全景图，镜头只动它）和 HUD（计数器、角标、剖面放大）两层；做法和坑见 `references/visual-schemas.md`。
   **不要用 Motion Canvas 的 `Camera` 组件**：它把子节点放进脱离场景树的节点，渲染 QA 看不到，会零问题放行。
@@ -256,6 +280,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
   画面和旁白里的**书页、图号、“书里/原图”、内部编号**、**两份时间轴不一致**。另报 warn：同一拍的几个 `at()` 补间同一个对象、
   按旁白估出的时间窗重叠（块会在两条路径间抽动）——要先后发生，放进同一个 `at()` 的 `chain(…)`。
   另列“画面手段”：每个场景用到了哪些技法，只用了框、线、文字的场景记 warn（讲机制的场景要回去选图式、挑技法）。
+  **开头**是门槛：播某个单元 timeline 第一拍的场景里没有 `UnitTitle` / `ChapterTitle` 记 error；目录里有两个以上单元（一整章）时，
+  没有用 `ChapterTitle` 的开篇、或开篇里没有 `Roadmap`，也记 error。
 - 渲染：MC 用 `python <skill>/scripts/qa_chapter.py --project motion-canvas --dir src/scenes/<chapter>`，一条命令把这一章的场景逐个用 `--qa` 渲染并汇总；
   默认只重渲改过的场景（场景文件或它 import 的 lib、组件、时间轴内容变了才重渲），修完再跑一遍很快。
   **渲染前先过教学设计门槛**：它在工程上一级目录里找 `design.md` / `*-design.md`（找不到或找到多份时用 `--design` 指定），
@@ -336,7 +362,8 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | 每拍最长定格（画面整体实测） | < 6s（≥ 3s 要说明理由；对小物体的慢移动不敏感，以 idle 为准） | `sample_frames.py` |
 | 配音疑似重复/多读 | 0 | `audio_timeline.py` |
 | P0 要点 | 100% 有画面动作 |
-| 教学设计结构（P0 机制 ≤ 3、[走查] 题、图式四问、走查 ≥ 3 步 ≥ 4 拍、延伸有依据） | 0 FAIL；没过不渲染、不出新手测试题包 | `check_design.py`（`qa_chapter.py`、`newbie_pack.py` 自动再查） |
+| 教学设计结构（P0 机制 ≤ 3、[走查] 题、图式四问、走查 ≥ 3 步 ≥ 4 拍、延伸有依据；整章开篇：章标题、主旨、路线图覆盖全部单元、标题拍是第一拍） | 0 FAIL；没过不渲染、不出新手测试题包 | `check_design.py`（`qa_chapter.py`、`newbie_pack.py` 自动再查） |
+| 开头 | 整章第一拍是章标题，开篇有路线图（45–90 秒）；每个单元第一拍是站牌 | `check_design.py`（设计、标题拍）、lint（场景用了 `ChapterTitle` / `Roadmap` / `UnitTitle`） |
 | 单元密度 | 每单元 P0 机制 ≤ 3 个；每个 P0 机制有具体数据的走查，≥ 4 拍 | `check_design.py`、忠实审 |
 | 画面手段 | 讲机制的场景不只用框、线、文字 | lint 的“画面手段”（warn，观感审逐条看） |
 | 原文之外的内容 | 100% 进清单；深度延伸写明依据，画面标注“延伸 · 原文之外”或“示意” | 忠实审 |
@@ -356,6 +383,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 - 不要自己代入新手做新手测试：交给没有上下文的会话或真人。
 - 不要只读规则不看示例：设计、分镜、场景动笔前先看 `examples/` 里对应的那份，照它的结构写。
 - 不要用 `--no-design` 绕过正在做的章节：它只给不讲机制的工程和已定稿的旧章节用。设计检查没过，就回第 2 步改 design.md。
+- 不要一上来就讲第一个机制：整章先亮章标题、讲这章讲什么、给路线图；每个单元先亮站牌。开篇也不要讲成机制课，细节留给各单元。
 - 不要追加补丁段：要么重写这个单元的叙事，要么把内容编织进已有的拍。
 - 不要按模板给固定时长：时长由旁白决定。
 - 不要把工作备注、页码指引放上画面。
@@ -379,7 +407,7 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | `references/pedagogy.md` | 第 2、3 步：钩子、误区、深度演示模式库、通俗化手法 |
 | `references/visual-schemas.md` | 第 2、3、6 步：选图式的四个问题、空框测试、图式清单、全景图 / 推镜头 / 剖面放大、节奏与演示拍 |
 | `references/techniques.md` | 第 6 步：两个工具的技法目录——按教学场景反查；每种技法的样子、适合 / 不适合、最小写法、在哪个示例的哪一拍 |
-| `examples/` | 动笔前：`lsm/`（完整单元：设计 → 分镜 → 场景）、`mc-gallery/`、`manim-gallery/`（技法图库）；`examples/README.md` 是规则 → 示例 → 检查的对照 |
+| `examples/` | 动笔前：`lsm/`（完整单元：设计 → 分镜 → 场景，w0 是站牌）、`opening/`（整章开篇：章标题 → 主旨 → 路线图 → 下一站）、`mc-gallery/`、`manim-gallery/`（技法图库）；`examples/README.md` 是规则 → 示例 → 检查的对照 |
 | `references/tool-routing.md` | 第 4 步拿不准用哪个工具时 |
 | `references/motion-canvas.md` | 写 MC 场景、组件、渲染、拼接混音 |
 | `references/manim.md` | 写 Manim 场景（无 LaTeX 环境、确定性数据、计时） |
@@ -387,13 +415,13 @@ inventory 和 design 只是 outline，内容以原文为准：例子的细节、
 | `references/review-rubric.md` | 第 7 步：四道审查的完整清单、每轮流程、轮次对比和报告模板 |
 | `references/templates.md` | inventory / design / beats / timeline / 轮次快照的空白模板 |
 | `references/example-unit.md` | 完整示例：一节内容 → 要点清单 → 两个学习单元的设计和分镜 |
-| `scripts/check_design.py` | 第 2 步写完 design.md：P0 机制密度、[走查] 题、图式四问、机制走查表、深度延伸依据（`qa_chapter.py`、`newbie_pack.py` 会自动再查） |
+| `scripts/check_design.py` | 第 2 步写完 design.md：P0 机制密度、[走查] 题、图式四问、机制走查表、深度延伸依据；整章的开篇单元和路线图（`qa_chapter.py`、`newbie_pack.py` 会自动再查） |
 | `scripts/newbie_pack.py` | 第 7 步：新手测试题包（旁白 + 联系表 + 学习目标题）和记录模板 |
 | `scripts/examples.py` | 渲染示例看成片（临时装进工程、带 QA、结束清理）；`check` 把示例当回归用例跑；`frames` 抽关键帧 |
-| `scripts/lint_scenes.py` | 渲染前的静态检查：门槛、并行补间冲突、书页/图号/内部编号、时间轴副本、画面手段 |
+| `scripts/lint_scenes.py` | 渲染前的静态检查：门槛、并行补间冲突、书页/图号/内部编号、时间轴副本、开头有标题、画面手段 |
 | `scripts/audio_timeline.py` | 音频 → timeline.json（可同时写多份）+ SRT + 拼接清单 + 配音检查 |
 | `scripts/sample_frames.py` | 渲染后：按拍抽帧、联系表、每拍最长定格 |
 | `scripts/qa_chapter.py` | 第 6 步：整章渲染 QA 一条命令跑完并汇总（门槛结论、error 清单、静止 3–6s 的拍、未覆盖场景）；默认只重渲改过的场景 |
 | `scripts/render_lock.py` | 渲染锁：`run <名字> -- <命令>` 拿锁跑命令再放锁（Manim、拼片等），`status` 看锁在谁手里；与 `render.mjs` 的锁互认 |
 | `scripts/qa_selftest.py` | 自检规则（含渲染锁）的通用测试：改规则或渲染锁后、新环境搭好后跑，全部通过才算规则可用 |
-| `assets/` | theme、beat（含 `at()` 旁白对齐、演示拍）、layout（防压字摆位）、schemas（图式组件）、渲染 QA、文字卡、无头渲染管线、`qa-fixtures/` 测试用例 |
+| `assets/` | theme、beat（含 `at()` 旁白对齐、演示拍）、layout（防压字摆位）、schemas（图式组件）、opening（章标题、路线图、站牌）、渲染 QA、文字卡、无头渲染管线、`qa-fixtures/` 测试用例 |

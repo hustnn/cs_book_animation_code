@@ -85,6 +85,8 @@ cd ch01/motion-canvas && node scripts/render.mjs <场景名> --qa
 # qa_chapter --no-render 会判“报告比代码旧”；让 qa_chapter 自己渲染，或重渲补指纹（两次渲染字节相同）。
 # skill v1.10 起 qa_chapter 渲染前先查教学设计（章节目录里的 *-design.md 跑 check_design.py，没过不渲染）。
 # 第 1、2 章已定稿、设计早于这套结构，重跑 qa_chapter 时加 --no-design；第 3 章起不要加，先把 design.md 改到检查通过。
+# skill v1.11 起整章要有开篇（章标题 + 路线图），每个单元第一拍是站牌：从 skill 拷 assets/motion-canvas/opening.tsx 到 src/lib/，
+# 照 examples/opening/scenes/chapter.ts 写本章的 src/lib/chapter.ts（和 design.md 开篇单元的路线图表一致）。lint 的“开头”门槛查场景有没有用上。
 # skill v1.10.1 起 qa_chapter 渲完会验证落盘的 mp4，要用 ffmpeg：默认用工程 node_modules 里 Motion Canvas 自带的那份，
 # 也可以 export FFMPEG=/path/to/ffmpeg；装了 ffprobe（PATH 里或 FFPROBE）会多核对视频轨时长和元数据帧数。
 # skill v1.10.3 起渲染用的 Vite 不监视源码（vite.config.ts 读 MC_RENDER_NO_WATCH，render.mjs 启动时设上）：渲染中途改

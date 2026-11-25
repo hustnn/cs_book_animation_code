@@ -1,6 +1,7 @@
 # 示例：LSM 树（完整单元，设计 → 分镜 → 场景 → 自检）
 
-一个按本 skill 全流程做出来的单元：原文“SSTable 与 LSM 树”一节，做成 3 个场景、42 拍、约 4 分 16 秒。
+一个按本 skill 全流程做出来的单元：原文“SSTable 与 LSM 树”一节，做成 3 个场景、43 拍、约 4 分 20 秒。
+第一拍 w0 是单元站牌（`UnitTitle`：“存储与检索 · 第 3 站 / 共 15 站”、单元标题、迷你路线条），这一章的开篇在 `examples/opening/`。
 它是“机制讲透”和“图式”两件事的参照样本：做存储、索引、消息、复制这类“数据在系统里怎么变”的单元时，先看这里。
 
 ## 先看什么
@@ -28,6 +29,7 @@
 
 | 图式（visual-schemas.md） | 拍 | 代码 |
 |---|---|---|
+| 单元站牌（开头） | w0 | `UnitTitle`（`lib/opening.tsx`）+ 章数据 `scenes/chapter.ts`；w1 开头 `toHeader()` 收成左上角页眉 |
 | 数据有身份 | 全片 | `KV`（`lib/schemas.ts`）；写入场景的 `arrive` / `logIt`（复制块出发时才显形）/ `intoMem` |
 | 有序插入、其余让位 | w5–w10 | `Slots.insertSorted` |
 | 覆盖与作废 | w8、w13、c1、c4 | `KV.setValue`、`KV.stale` |

@@ -1,13 +1,15 @@
-// 示例 LSM · 场景 1：写入路径（w1–w14）。
+// 示例 LSM · 场景 1：写入路径（w0–w14）。w0 是单元站牌（UnitTitle：章名 · 第 3 站 / 共 15 站 + 单元标题），w1 开头收成左上角页眉。
 // 图式：全景图常驻（左内存 / 右磁盘），每次写入是一个有身份的键值块：先追加进日志，再有序插进 memtable
 // （其余块让位）；满了冻结、新树接着收写入；冻结的树按顺序整棵刷成 SSTable；刷完丢日志。
 // 设计：../design.md；分镜：../beats.md。时长全部来自 ../timeline.json（装进工程后是 src/timeline/example-lsm.json）。
 import {Line, Node, Txt, makeScene2D} from '@motion-canvas/2d';
 import {Vector2, all, chain, createRef, easeInOutCubic, sequence, waitFor} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {UnitTitle} from '../../lib/opening';
 import {CHIP_H, KV, Meter, Slots, zone} from '../../lib/schemas';
 import {FROZEN, IN, MEM_A, SST_TOP, SST_X, WAL_CELL, sst, sstCenter, walFrame, walPos} from './lsm-stage';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
+import {CHAPTER} from './chapter';
 import timeline from '../../timeline/example-lsm.json';
 
 export default makeScene2D(function* (view) {
@@ -20,18 +22,13 @@ export default makeScene2D(function* (view) {
   view.add(
     <>
       <Node ref={world} />
-      <Txt
-        position={[-SAFE.halfW, -SAFE.halfH]}
-        offset={[-1, -1]}
-        fontSize={SIZE.label}
-        fill={T.muted}
-        fontFamily={FONT.sans}
-        text={'排好序的段：SSTable 与 LSM 树'}
-      />
       <Txt ref={anchor} position={[0, 290]} fontSize={SIZE.body} fill={T.text} fontFamily={FONT.sans} text={''} />
     </>,
   );
   const W = world();
+  // 单元站牌：这一站在全章的位置 + 单元标题；收起后留下左上角页眉（读取、合并两个场景的页眉同一个位置）
+  const unit = new UnitTitle(CHAPTER, 'u3');
+  view.add(unit.nodes());
 
   // ---- 全景图 ----
   const [memZone, memName] = zone([-325, -25], 500, 450, '内存');
@@ -71,9 +68,12 @@ export default makeScene2D(function* (view) {
   const teaser = ['handoff', 'handbag', 'handsome', 'handful'].map(k => new KV(k, '', 'key'));
   const row = new Slots(new Vector2(0, -40), 'row', 4, {item: 150, cross: CHIP_H, gap: 18});
   teaser.forEach(t => W.add(t.node));
+  yield* beat('w0', unit.enter());
+
   say('乱序写入 → 有序的段');
   yield* beat(
     'w1',
+    unit.toHeader(),
     at('乱序', sequence(0.25, ...teaser.map((t, i) => t.appear(row.pos(i), 0.35)))),
     at('排好序', all(...[...teaser].sort((a, b) => (a.key < b.key ? -1 : 1)).map((t, i) => t.moveTo(row.pos(i), 1.2)))),
     at('走一遍', all(...teaser.map(t => t.node.stroke(T.green, 0.5)))),

@@ -18,6 +18,7 @@ import {
   waitFor,
 } from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {UnitTitle} from '../../lib/opening';
 import {Counter, KV} from '../../lib/schemas';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/example-mc-gallery.json';
@@ -35,7 +36,6 @@ export default makeScene2D(function* (view) {
   const technique = createRef<Txt>();
   view.add(
     <>
-      <Txt position={[-SAFE.halfW, -SAFE.halfH]} offset={[-1, -1]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'技法图库 · 结构'} />
       <Txt ref={technique} position={[SAFE.halfW, -SAFE.halfH]} offset={[1, -1]} fontSize={SIZE.label} fill={T.purple} fontFamily={FONT.sans} text={''} />
       <Txt ref={caption} position={[0, 290]} fontSize={SIZE.body} fill={T.text} fontFamily={FONT.sans} text={''} />
     </>,
@@ -82,10 +82,20 @@ export default makeScene2D(function* (view) {
   vars.opacity(0);
   A.add([vars, cmp, compares.node, note]);
 
+  // 开头先亮标题（不属于某一章的独立视频：UnitTitle 不给章数据，只写位置行和标题），s1 开头收成左上角页眉
+  const unit = new UnitTitle(null, null, {
+    kicker: 'Motion Canvas 技法图库 · 第 1 部分 / 共 2 部分',
+    title: '结构：代码、树、表、环',
+    header: '技法图库 · 结构',
+  });
+  view.add(unit.nodes());
+  yield* beat('s0', unit.enter());
+
   tech('Code 逐行高亮 + 信号驱动的指针');
   say('二分查找：代码和数据一起走');
   yield* beat(
     's1',
+    unit.toHeader(),
     at('二分查找', code().opacity(1, 0.6)),
     at('上面是排好序的键', sequence(0.12, ...chips.map((c, i) => c.appear([xs(i), ROW_Y], 0.4)))),
     at('要找的是', target.appear([0, ROW_Y - 62], 0.4)),
