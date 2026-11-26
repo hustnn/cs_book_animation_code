@@ -1,9 +1,11 @@
-// U15 场景 1（MC）：b1–b7 —— 钩子、存与取、两大类、事务只碰少量记录、分析扫数百万条。
+// U15 场景 1（MC）：b0–b7 —— b0 单元站牌（UnitTitle：第 15 站），b1 钩子、存与取、两大类、事务只碰少量记录、分析扫数百万条。
 // 分镜：skill-ch03/beats-u15.md；原文：DDIA §3.15（书页 p103，PDF p125）。
 // 时长全部来自 timeline/u15.json（beat() 驱动），不手写 waitFor。
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {UnitTitle} from '../../lib/opening';
+import {CHAPTER} from '../../lib/chapter';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u15.json';
 
@@ -11,7 +13,10 @@ export default makeScene2D(function* (view) {
   view.fill(T.bg);
   const beat = makeBeats(timeline);
 
-  const header = createRef<Txt>();
+  // 单元站牌（b0）：这一站在全章的位置 + 单元标题；b1 开头收成左上角页眉。
+  // 页眉与场景原有的左上角标题同一位置同一样式，旧 header 已删，改由 unit.header 承担。
+  const unit = new UnitTitle(CHAPTER, 'u15');
+
   const anchor = createRef<Txt>();
   const say = (text: string) => anchor().text(text);
 
@@ -70,15 +75,7 @@ export default makeScene2D(function* (view) {
 
   view.add(
     <>
-      <Txt
-        ref={header}
-        position={[-SAFE.halfW, -SAFE.halfH]}
-        offset={[-1, -1]}
-        fontSize={SIZE.label}
-        fill={T.muted}
-        fontFamily={FONT.sans}
-        text={'小结'}
-      />
+      {unit.nodes()}
       <Txt
         ref={anchor}
         position={[0, 280]}
@@ -116,15 +113,13 @@ export default makeScene2D(function* (view) {
         <Txt ref={g2outLab} position={[410, -130]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'要回来'} opacity={0} />
       </Node>
 
-      {/* b3 */}
+      {/* b3：两大类（r6：删两卡下方英文小字，标题居中） */}
       <Node ref={g3} opacity={0}>
         <Rect ref={g3left} position={[-300, -60]} width={440} height={180} radius={16} fill={T.card} stroke={T.blue} lineWidth={3}>
-          <Txt position={[0, -30]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'事务处理'} />
-          <Txt position={[0, 40]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.mono} text={'OLTP'} />
+          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'事务处理'} />
         </Rect>
         <Rect ref={g3right} position={[300, -60]} width={440} height={180} radius={16} fill={T.card} stroke={T.green} lineWidth={3}>
-          <Txt position={[0, -30]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'分析'} />
-          <Txt position={[0, 40]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.mono} text={'OLAP'} />
+          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'分析'} />
         </Rect>
       </Node>
 
@@ -193,8 +188,11 @@ export default makeScene2D(function* (view) {
     </>
   );
 
+  yield* beat('b0', unit.enter());
+
   say('两条路，怎么选？');
   yield* beat('b1',
+    unit.toHeader(),
     all(g1().opacity(1, 0.5)),
     at('两条路', chain(g1dot().opacity(1, 0.4), g1forkL().opacity(1, 0.5), g1forkR().opacity(1, 0.5))),
     at('怎么选', g1q().opacity(1, 0.4)),

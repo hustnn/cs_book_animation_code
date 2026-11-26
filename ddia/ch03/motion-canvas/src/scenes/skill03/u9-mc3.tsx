@@ -1,15 +1,22 @@
-// U9 场景 3（MC）：b19–b30 —— 仓库针对分析优化、关系模型与 SQL、
-// 表面同是 SQL、内部不同、同一产品两个引擎、商业与开源厂商、
-// 误区（不是更大的数据库）、星型模式引出、结尾回扣。
+// U9 场景 3（MC）r4：i25–i28e —— 分析师查仓库、关系模型与 SQL、
+// 图形化分析工具（下钻/切片/切块）、大企业有小公司没有、
+// 仓库针对分析优化、交易的索引不擅长分析。“费大力气”用 Meter 计量。
+// r4 改动（B35）：i27a 后加三拍演示——同一张分析表走一遍下钻（月汇总→天行）、
+// r5 改动（r4 新手测试）：i27 画出 SQL 查询卡（工具生成的查询，示意）；i27b 月汇总卡补“本月共卖 4 件”；i28c 加因果小注；i28e 改触发词 + 加“查几百万次”小注。
+// r6 改动（r5 新手测试）：i27 柱状图改成两根柱子对上 SQL 结果（140102 卖 1 件、140103 卖 3 件，柱高 1:3），加横轴“日期”、纵轴“数量”、日期与数值标签、标题“可视化结果 · 产品 31”；i27b 下钻表一开始就摆三行、产品 28 的行念到时先灰掉，i27c/i27d 旁白改“灰掉了，先不看它 / 只剩这一行还亮着”；i28d 模式牌与“分析访问模式”标签提前到“一大优点”时出现，旁白加半句挂钩。
+// r7 改动（r6 新手测试 P2-4）：i27b 旁白加“140102 就是 2014 年 1 月 2 日”（画面出日期展开小标）与算式“1 件加 3 件，就是这 4 件”（两行产品 31 轻 pulse）。
+// r8 改动（r7 新手测试 P2-5）：i27b 旁白加“1401 就是 2014 年 1 月”；表下加绿色“合计 4 件”标，与日期小标并排在表下（日期小标左移至 [-210,70]，合计标 [210,70]；两标之间空隙大，不碰表底与操作牌）。
+// 帧级审查修复 F2：月汇总卡加高（总数文字被卡底边划过）；F3：柱状图缩放 1.12 改 1.05（柱子顶出卡片）。
+// 切片（固定产品 31）、切块（产品 31 + 140102）；演示表三行里 140102|31|1 是
+// i20 分析表里的原行，另两行是示意数据，角标“示意”。i28e 补一句为什么。
 // 分镜：skill-ch03/beats-u9.md；原文：DDIA §3.8（书页 p92–93，PDF p114–115）。
 // 时长全部来自 timeline/u9.json（beat() 驱动），不手写 waitFor。
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {Meter, tag} from '../../lib/schemas';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u9.json';
-
-const OSS = ['Hive', 'Spark SQL', 'Impala', 'Presto', 'Tajo', 'Drill'];
 
 export default makeScene2D(function* (view) {
   view.fill(T.bg);
@@ -19,76 +26,67 @@ export default makeScene2D(function* (view) {
   const anchor = createRef<Txt>();
   const say = (text: string) => anchor().text(text);
 
-  // ---- b19：为分析优化 ----
-  const g19 = createRef<Node>();
-  const whBody19 = createRef<Rect>();
-  const whLid19 = createRef<Circle>();
-  const modeCard = createRef<Rect>();
+  // ---- i25：分析师查仓库 ----
+  const g25 = createRef<Node>();
+  const whBody25 = createRef<Rect>();
+  const whLid25 = createRef<Circle>();
+  const analyst25 = createRef<Rect>();
+  const qArrow25 = createRef<Line>();
 
-  // ---- b20：交易的索引不擅长分析 ----
-  const g20 = createRef<Node>();
-  const txIdx = createRef<Rect>();
-  const anIdx = createRef<Rect>();
-  const anX = createRef<Txt>();
-
-  // ---- b21：路线牌 ----
-  const g21 = createRef<Node>();
-  const routeCard = createRef<Rect>();
-
-  // ---- b22–b23：关系模型 / 分析工具 ----
-  const g22 = createRef<Node>();
+  // ---- i26–i27：关系模型 / 分析工具 ----
+  const g26 = createRef<Node>();
   const relTable = createRef<Rect>();
   const sqlPlate = createRef<Txt>();
   const toolCard = createRef<Rect>();
   const chartCard = createRef<Rect>();
-  const bars = [0, 1, 2].map(() => createRef<Rect>());
-  const qArrow23 = createRef<Line>();
+  const chartTitle = createRef<Txt>();
+  const sqlCard = createRef<Rect>();
+  const sqlTag = createRef<Txt>();
+  const bars = [0, 1].map(() => createRef<Rect>());
+  const barVals = [0, 1].map(() => createRef<Txt>());
+  const barDates = [0, 1].map(() => createRef<Txt>());
+  const axisLine = createRef<Line>();
+  const yLab = createRef<Txt>();
+  const xLab = createRef<Txt>();
+  const qArrow27 = createRef<Line>();
+  const qDot = createRef<Circle>();
   const opCards = [0, 1, 2].map(() => createRef<Rect>());
+  const monthCard = createRef<Rect>();
+  const monthTotal = createRef<Txt>();
+  const prodTag = createRef<Txt>();
+  const demoTable = createRef<Rect>();
+  const demoRows = [0, 1, 2].map(() => createRef<Rect>());
+  const dateTag = createRef<Txt>();
+  const totalTag = createRef<Txt>();
+  const demoTag = tag([300, -215], '示意', [0, 0]);
 
-  // ---- b24–b25：表面像、内部不同 ----
-  const g24 = createRef<Node>();
-  const whBox = createRef<Rect>();
-  const txBox = createRef<Rect>();
-  const plateL = createRef<Txt>();
-  const plateR = createRef<Txt>();
-  const insideL = createRef<Txt>();
-  const insideR = createRef<Txt>();
-  const forkTag = createRef<Txt>();
-
-  // ---- b26：同一产品，两个引擎 ----
-  const g26 = createRef<Node>();
-  const prodBox = createRef<Rect>();
-  const prodTag1 = createRef<Txt>();
-  const prodTag2 = createRef<Txt>();
-  const engTx = createRef<Rect>();
-  const engAn = createRef<Rect>();
-  const commonPlate = createRef<Txt>();
-
-  // ---- b27a–b27c：厂商 ----
-  const g27 = createRef<Node>();
-  const vendorCards = [0, 1, 2, 3].map(() => createRef<Rect>());
-  const priceTag = createRef<Txt>();
-  const rsCard = createRef<Rect>();
-  const rsTag = createRef<Txt>();
-  const ossCards = OSS.map(() => createRef<Rect>());
-  const dremelCard = createRef<Rect>();
-  const dremelLines = [0, 1].map(() => createRef<Line>());
-
-  // ---- b28：误区 ----
+  // ---- i28a–i28c：大企业 / 小公司 ----
   const g28 = createRef<Node>();
-  const biggerCard = createRef<Rect>();
-  const mythTag = createRef<Txt>();
-  const trueCards = [0, 1, 2].map(() => createRef<Rect>());
+  const bigCard = createRef<Rect>();
+  const bigWh = createRef<Rect>();
+  const bigTick = createRef<Txt>();
+  const smallCard = createRef<Rect>();
+  const smallX = createRef<Txt>();
+  const smallDb = createRef<Rect>();
+  const sheetCard = createRef<Rect>();
+  const miniChips = [0, 1, 2].map(() => createRef<Rect>());
+  const heavyTag = createRef<Txt>();
+  const causeTag = createRef<Txt>();
+  const effort = new Meter([-540, 80], 120, {title: '费力', tone: T.red});
 
-  // ---- b29–b30：星型引出 + 结尾 ----
-  const g29 = createRef<Node>();
-  const whBody29 = createRef<Rect>();
-  const whLid29 = createRef<Circle>();
-  const star = createRef<Txt>();
-  const nextTag = createRef<Txt>();
-  const stepCards = [0, 1, 2].map(() => createRef<Rect>());
-  const whBody30 = createRef<Rect>();
-  const whLid30 = createRef<Circle>();
+  // ---- i28d：为分析优化 ----
+  const g19 = createRef<Node>();
+  const whBody19 = createRef<Rect>();
+  const whLid19 = createRef<Circle>();
+  const modeCard = createRef<Rect>();
+  const modeLabel = createRef<Txt>();
+
+  // ---- i28e：交易的索引不擅长分析 ----
+  const g20 = createRef<Node>();
+  const txIdx = createRef<Rect>();
+  const anIdx = createRef<Rect>();
+  const anX = createRef<Txt>();
+  const whyTag = createRef<Txt>();
 
   view.add(
     <>
@@ -113,40 +111,20 @@ export default makeScene2D(function* (view) {
         text={''}
       />
 
-      {/* b19：为分析优化 */}
-      <Node ref={g19} opacity={0}>
-        <Rect ref={whBody19} position={[-300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
+      {/* i25：分析师查仓库 */}
+      <Node ref={g25} opacity={0}>
+        <Rect ref={whBody25} position={[-300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.blue} lineWidth={3} opacity={0}>
           <Txt position={[0, 30]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'数据仓库'} />
         </Rect>
-        <Circle ref={whLid19} position={[-300, -145]} width={340} height={40} fill={T.bg} stroke={T.line} lineWidth={2} />
-        <Rect ref={modeCard} position={[300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
-          <Txt position={[0, -25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'扫海量记录'} />
-          <Txt position={[0, 25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'算聚合'} />
+        <Circle ref={whLid25} position={[-300, -145]} width={340} height={40} fill={T.bg} stroke={T.blue} lineWidth={3} opacity={0} />
+        <Rect ref={analyst25} position={[300, -80]} width={300} height={110} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'业务分析师'} />
         </Rect>
+        <Line ref={qArrow25} points={[[150, -80], [-130, -80]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
       </Node>
 
-      {/* b20：交易的索引不擅长分析 */}
-      <Node ref={g20} opacity={0}>
-        <Rect ref={txIdx} position={[-300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt position={[0, -25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'按键查少量记录'} />
-          <Txt position={[0, 25]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'对交易很有效'} />
-        </Rect>
-        <Rect ref={anIdx} position={[300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
-          <Txt position={[0, -25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'扫海量记录算聚合'} />
-          <Txt position={[0, 25]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'回答分析查询'} />
-        </Rect>
-        <Txt ref={anX} position={[300, 60]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'不太擅长'} opacity={0} />
-      </Node>
-
-      {/* b21：路线牌 */}
-      <Node ref={g21} opacity={0}>
-        <Rect ref={routeCard} position={[0, -80]} width={760} height={100} radius={16} fill={T.card} stroke={T.blue} lineWidth={2}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'下一站：针对分析优化的存储引擎'} />
-        </Rect>
-      </Node>
-
-      {/* b22–b23：关系模型 / 分析工具 */}
-      <Node ref={g22} opacity={0}>
+      {/* i26–i27：关系模型 / 分析工具 */}
+      <Node ref={g26} opacity={0}>
         <Rect ref={relTable} position={[0, -80]} width={560} height={180} radius={16} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
           <Txt position={[0, -55]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'关系表'} />
           <Txt position={[0, 0]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'日期 | 产品 | 数量'} />
@@ -156,22 +134,39 @@ export default makeScene2D(function* (view) {
         <Rect ref={toolCard} position={[-320, -80]} width={300} height={110} radius={14} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
           <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'图形化分析工具'} />
         </Rect>
-        <Line ref={qArrow23} points={[[-170, -80], [-20, -80]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
-        <Rect ref={chartCard} position={[280, -80]} width={320} height={160} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt position={[0, -55]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'可视化结果'} />
+        <Line ref={qArrow27} points={[[-170, -80], [-20, -80]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
+        <Circle ref={qDot} position={[-170, -80]} width={22} height={22} fill={T.yellow} opacity={0} />
+        <Rect ref={sqlCard} position={[0, 30]} width={600} height={96} radius={14} fill={T.card} stroke={T.yellow} lineWidth={2} opacity={0}>
+          <Txt position={[0, -22]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'SELECT 日期， 产品， 数量'} />
+          <Txt position={[0, 22]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'FROM 销售分析表 WHERE 产品 = 31'} />
         </Rect>
-        {[0, 1, 2].map(i => (
+        <Txt ref={sqlTag} position={[0, -32]} fontSize={SIZE.min} fill={T.muted} fontFamily={FONT.sans} text={'工具生成的查询（示意）'} opacity={0} />
+        <Rect ref={chartCard} position={[280, -80]} width={320} height={160} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt ref={chartTitle} position={[0, -62]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'可视化结果 · 产品 31'} opacity={0} />
+        </Rect>
+        {/* r6：两根柱子对上 SQL 结果（140102 卖 1 件、140103 卖 3 件，柱高 1:3），基线 y=-45 */}
+        <Line ref={axisLine} points={[[150, -45], [410, -45]]} stroke={T.line} lineWidth={2} opacity={0} />
+        {[
+          {x: 230, y: -58.5, h: 27, v: '1', d: '140102'},
+          {x: 330, y: -85.5, h: 81, v: '3', d: '140103'},
+        ].map((b, i) => (
           <Rect
             key={`bar-${i}`}
             ref={bars[i]}
-            position={[180 + i * 100, -30 - i * 25]}
+            position={[b.x, b.y]}
             width={60}
-            height={50 + i * 50}
+            height={b.h}
             radius={8}
             fill={T.blue}
             opacity={0}
           />
         ))}
+        <Txt ref={barVals[0]} position={[230, -60]} fontSize={SIZE.label} fill={T.white} fontFamily={FONT.mono} text={'1'} opacity={0} />
+        <Txt ref={barVals[1]} position={[330, -113]} fontSize={SIZE.label} fill={T.white} fontFamily={FONT.mono} text={'3'} opacity={0} />
+        <Txt ref={barDates[0]} position={[230, -32]} fontSize={SIZE.min} fill={T.text} fontFamily={FONT.mono} text={'140102'} opacity={0} />
+        <Txt ref={barDates[1]} position={[330, -32]} fontSize={SIZE.min} fill={T.text} fontFamily={FONT.mono} text={'140103'} opacity={0} />
+        <Txt ref={yLab} position={[138, -95]} rotation={-90} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'数量'} opacity={0} />
+        <Txt ref={xLab} position={[405, -32]} fontSize={SIZE.min} fill={T.muted} fontFamily={FONT.sans} text={'日期'} opacity={0} />
         {['下钻', '切片', '切块'].map((t, i) => (
           <Rect
             key={`op-${i}`}
@@ -188,49 +183,23 @@ export default makeScene2D(function* (view) {
             <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={t} />
           </Rect>
         ))}
-      </Node>
-
-      {/* b24–b25：表面像、内部不同 */}
-      <Node ref={g24} opacity={0}>
-        <Rect ref={whBox} position={[-300, -80]} width={340} height={150} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
-          <Txt position={[0, -40]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'数据仓库'} />
+        {/* i27b–i27d：同一张分析表走一遍下钻/切片/切块 */}
+        <Rect ref={monthCard} position={[0, -80]} width={440} height={120} radius={14} fill={T.card} stroke={T.yellow} lineWidth={2} opacity={0}>
+          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'1401 月 · 产品 31 汇总'} />
         </Rect>
-        <Rect ref={txBox} position={[300, -80]} width={340} height={150} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
-          <Txt position={[0, -40]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'交易数据库'} />
+        <Txt ref={monthTotal} position={[0, -48]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'本月共卖 4 件'} opacity={0} />
+        <Txt ref={prodTag} position={[0, 8]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.sans} text={'先只看产品 31'} opacity={0} />
+        <Rect ref={demoTable} position={[0, -80]} width={560} height={240} radius={16} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
+          <Txt position={[0, -90]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'日期 | 产品 | 数量'} />
         </Rect>
-        <Txt ref={plateL} position={[-300, -180]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.mono} text={'SQL 接口'} opacity={0} />
-        <Txt ref={plateR} position={[300, -180]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.mono} text={'SQL 接口'} opacity={0} />
-        <Txt ref={insideL} position={[-300, 20]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'内部：列式扫描'} opacity={0} />
-        <Txt ref={insideR} position={[300, 20]} fontSize={SIZE.label} fill={T.blue} fontFamily={FONT.sans} text={'内部：按键索引'} opacity={0} />
-        <Txt ref={forkTag} position={[0, 120]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'各专注一边'} opacity={0} />
-      </Node>
-
-      {/* b26：同一产品，两个引擎 */}
-      <Node ref={g26} opacity={0}>
-        <Rect ref={prodBox} position={[0, -80]} width={760} height={150} radius={16} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
-          <Txt position={[0, -45]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'同一产品'} />
-        </Rect>
-        <Txt ref={prodTag1} position={[-180, -125]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'SQL Server'} opacity={0} />
-        <Txt ref={prodTag2} position={[180, -125]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'SAP HANA'} opacity={0} />
-        <Rect ref={engTx} position={[-190, -40]} width={320} height={80} radius={12} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'交易引擎'} />
-        </Rect>
-        <Rect ref={engAn} position={[190, -40]} width={320} height={80} radius={12} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'分析引擎'} />
-        </Rect>
-        <Txt ref={commonPlate} position={[0, 110]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.mono} text={'共用一个 SQL 接口'} opacity={0} />
-      </Node>
-
-      {/* b27a–b27c：厂商 */}
-      <Node ref={g27} opacity={0}>
-        {['Teradata', 'Vertica', 'SAP HANA', 'ParAccel'].map((t, i) => (
+        {['140102 | 31 | 1', '140102 | 28 | 2', '140103 | 31 | 3'].map((t, i) => (
           <Rect
-            key={`ven-${i}`}
-            ref={vendorCards[i]}
-            position={[-450 + i * 300, -80]}
-            width={260}
-            height={90}
-            radius={12}
+            key={`drow-${i}`}
+            ref={demoRows[i]}
+            position={[0, -115 + i * 60]}
+            width={520}
+            height={48}
+            radius={10}
             fill={T.card}
             stroke={T.line}
             lineWidth={2}
@@ -239,191 +208,183 @@ export default makeScene2D(function* (view) {
             <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={t} />
           </Rect>
         ))}
-        <Txt ref={priceTag} position={[0, 30]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'昂贵的商业许可'} opacity={0} />
-        <Rect ref={rsCard} position={[450, 110]} width={260} height={64} radius={12} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'RedShift'} />
-        </Rect>
-        <Txt ref={rsTag} position={[450, 170]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'托管版，跑在云上'} opacity={0} />
-        {OSS.map((t, i) => (
-          <Rect
-            key={`oss-${i}`}
-            ref={ossCards[i]}
-            position={[-380 + (i % 3) * 380, -160 + Math.floor(i / 3) * 130]}
-            width={260}
-            height={90}
-            radius={12}
-            fill={T.card}
-            stroke={T.purple}
-            lineWidth={2}
-            opacity={0}
-          >
-            <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={t} />
-          </Rect>
-        ))}
-        <Rect ref={dremelCard} position={[0, 130]} width={260} height={64} radius={12} fill={T.card} stroke={T.purple} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'Dremel'} />
-        </Rect>
-        <Line ref={dremelLines[0]} points={[[-80, 98], [-380, 15]]} stroke={T.purple} lineWidth={2} opacity={0} />
-        <Line ref={dremelLines[1]} points={[[80, 98], [380, 15]]} stroke={T.purple} lineWidth={2} opacity={0} />
+        {demoTag}
+        {/* r8：日期小标左移，与合计标并排在表下（表底 y=40、操作牌顶 y=98 之间的空带） */}
+        <Txt ref={dateTag} position={[-210, 70]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.mono} text={'140102 = 2014 年 1 月 2 日'} opacity={0} />
+        <Txt ref={totalTag} position={[210, 70]} fontSize={SIZE.label} fontWeight={700} fill={T.green} fontFamily={FONT.sans} text={'合计 4 件'} opacity={0} />
       </Node>
 
-      {/* b28：误区 */}
+      {/* i28a–i28c：大企业 / 小公司 */}
       <Node ref={g28} opacity={0}>
-        <Rect ref={biggerCard} position={[0, -100]} width={520} height={100} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'更大的数据库'} />
+        <Rect ref={bigCard} position={[-300, -80]} width={360} height={220} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
+          <Txt position={[0, -80]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'大企业'} />
         </Rect>
-        <Txt ref={mythTag} position={[0, 0]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'误区：不是变大，是另起一套'} opacity={0} />
-        {['独立的', '只读的', '为分析优化'].map((t, i) => (
-          <Rect
-            key={`true-${i}`}
-            ref={trueCards[i]}
-            position={[-320 + i * 320, 110]}
-            width={240}
-            height={64}
-            radius={12}
-            fill={T.card}
-            stroke={T.green}
-            lineWidth={2}
-            opacity={0}
-          >
-            <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={t} />
-          </Rect>
-        ))}
-      </Node>
-
-      {/* b29–b30：星型引出 + 结尾 */}
-      <Node ref={g29} opacity={0}>
-        <Rect ref={whBody29} position={[0, -60]} width={400} height={140} radius={16} fill={T.card} stroke={T.blue} lineWidth={2}>
-          <Txt position={[0, 40]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'数据仓库'} />
+        <Rect ref={bigWh} position={[-300, -10]} width={260} height={80} radius={14} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
+          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'数据仓库'} />
         </Rect>
-        <Circle ref={whLid29} position={[0, -130]} width={400} height={44} fill={T.bg} stroke={T.blue} lineWidth={2} />
-        <Txt ref={star} position={[0, -80]} fontSize={72} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'★'} opacity={0} />
-        <Txt ref={nextTag} position={[0, 110]} fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'下一单元：星型模式'} opacity={0} />
+        <Txt ref={bigTick} position={[-300, 60]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'几乎家家都有'} opacity={0} />
+        <Rect ref={smallCard} position={[300, -80]} width={360} height={220} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
+          <Txt position={[0, -80]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'小公司'} />
+        </Rect>
+        <Txt ref={smallX} position={[300, -10]} fontSize={SIZE.title} fontWeight={700} fill={T.red} fontFamily={FONT.sans} text={'✕ 没有仓库'} opacity={0} />
+        <Rect ref={smallDb} position={[300, -10]} width={260} height={80} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'常规数据库'} />
+        </Rect>
+        <Rect ref={sheetCard} position={[300, 90]} width={260} height={64} radius={12} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'电子表格也能分析'} />
+        </Rect>
         {[0, 1, 2].map(i => (
           <Rect
-            key={`step-${i}`}
-            ref={stepCards[i]}
-            position={[-320 + i * 320, -80]}
-            width={240}
-            height={80}
-            radius={14}
+            key={`chip-${i}`}
+            ref={miniChips[i]}
+            position={[-420 + i * 120, 120]}
+            width={110}
+            height={44}
+            radius={10}
             fill={T.card}
-            stroke={T.blue}
+            stroke={T.red}
             lineWidth={2}
             opacity={0}
           >
-            <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={['搬家', '变形', '入库'][i]} />
+            <Txt fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={['网站', '收银', '库存'][i]} />
           </Rect>
         ))}
-        <Rect ref={whBody30} position={[0, 110]} width={300} height={80} radius={14} fill={T.card} stroke={T.green} lineWidth={3} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'分析的地盘'} />
+        <Txt ref={heavyTag} position={[-300, 195]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'费大力气'} opacity={0} />
+        <Txt ref={causeTag} position={[-300, 235]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'数据散在几十个系统里，搬一次就得协调一回'} opacity={0} />
+      </Node>
+      {effort.nodes()}
+
+      {/* i28d：为分析优化 */}
+      <Node ref={g19} opacity={0}>
+        <Rect ref={whBody19} position={[-300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
+          <Txt position={[0, 30]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'数据仓库'} />
         </Rect>
-        <Circle ref={whLid30} position={[0, 70]} width={300} height={36} fill={T.bg} stroke={T.green} lineWidth={3} opacity={0} />
+        <Circle ref={whLid19} position={[-300, -145]} width={340} height={40} fill={T.bg} stroke={T.line} lineWidth={2} />
+        <Rect ref={modeCard} position={[300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
+          <Txt position={[0, -25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'扫海量记录'} />
+          <Txt position={[0, 25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'算聚合'} />
+        </Rect>
+        <Txt ref={modeLabel} position={[300, -175]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.sans} text={'分析访问模式'} opacity={0} />
+      </Node>
+
+      {/* i28e：交易的索引不擅长分析 */}
+      <Node ref={g20} opacity={0}>
+        <Rect ref={txIdx} position={[-300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt position={[0, -25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'按键查少量记录'} />
+          <Txt position={[0, 25]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'对交易很有效'} />
+        </Rect>
+        <Rect ref={anIdx} position={[300, -80]} width={340} height={130} radius={16} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
+          <Txt position={[0, -25]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'扫海量记录算聚合'} />
+          <Txt position={[0, 25]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'回答分析查询'} />
+        </Rect>
+        <Txt ref={anX} position={[300, 60]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'不太擅长'} opacity={0} />
+        <Txt ref={whyTag} position={[300, 105]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'按一个键取一条，查几百万次才扫完'} opacity={0} />
       </Node>
     </>
   );
 
-  say('为分析优化');
-  yield* beat('b19',
-    all(g19().opacity(1, 0.5)),
-    at('一大优点', whBody19().stroke(T.green, 0.5)),
-    at('针对分析访问模式', modeCard().opacity(1, 0.5)),
-  );
-
-  say('交易的索引不擅长分析');
-  yield* beat('b20',
-    all(g19().opacity(0, 0.5), g20().opacity(1, 0.5)),
-    at('对交易很有效', txIdx().opacity(1, 0.5)),
-    at('不太擅长', all(anIdx().opacity(1, 0.5), anX().opacity(1, 0.4))),
-  );
-
-  say('剩下看分析引擎');
-  yield* beat('b21',
-    all(g20().opacity(0, 0.5), g21().opacity(1, 0.5)),
-    at('针对分析优化的存储引擎', routeCard().scale(1.03, 1.5)),
+  say('分析师查仓库');
+  yield* beat('i25',
+    all(g25().opacity(1, 0.5), whBody25().opacity(1, 0.5), whLid25().opacity(1, 0.5)),
+    at('业务分析师', analyst25().opacity(1, 0.5)),
+    at('不用再碰业务库', qArrow25().opacity(1, 0.5)),
   );
 
   say('最常见是关系型');
-  yield* beat('b22',
-    all(g21().opacity(0, 0.5), g22().opacity(1, 0.5)),
+  yield* beat('i26',
+    all(g25().opacity(0, 0.5), g26().opacity(1, 0.5)),
     at('关系型', relTable().opacity(1, 0.5)),
     at('SQL', sqlPlate().opacity(1, 0.4)),
   );
 
-  say('下钻、切片、切块');
-  yield* beat('b23',
+  say('生成 SQL 查询');
+  yield* beat('i27',
     all(relTable().opacity(0, 0.4), sqlPlate().opacity(0, 0.4), toolCard().opacity(1, 0.5), chartCard().opacity(1, 0.5)),
-    at('生成 SQL 查询', qArrow23().opacity(1, 0.4)),
-    at('可视化结果', chain(bars[0]().opacity(1, 0.4), bars[1]().opacity(1, 0.4), bars[2]().opacity(1, 0.4))),
+    at('生成 SQL 查询', all(qArrow27().opacity(1, 0.4), sqlCard().opacity(1, 0.4), sqlTag().opacity(1, 0.4))),
+    at('可视化结果', all(chartTitle().opacity(1, 0.4), bars[0]().opacity(1, 0.4), bars[1]().opacity(1, 0.4), axisLine().opacity(1, 0.4), barVals[0]().opacity(1, 0.3), barVals[1]().opacity(1, 0.3), barDates[0]().opacity(1, 0.3), barDates[1]().opacity(1, 0.3), yLab().opacity(1, 0.3), xLab().opacity(1, 0.3))),
+    at('点一点', toolCard().stroke(T.yellow, 0.4)),
+    at('送进仓库', chain(qDot().opacity(1, 0.2), qDot().position([-20, -80], 1.2))),
+    at('结果再画成图', all(chartCard().stroke(T.green, 0.4), bars[0]().scale(1.05, 0.4), bars[1]().scale(1.05, 0.4))),
+  );
+
+  say('下钻、切片、切块');
+  yield* beat('i27a',
     at('下钻', opCards[0]().opacity(1, 0.4)),
     at('切片与切块', all(opCards[1]().opacity(1, 0.4), opCards[2]().opacity(1, 0.4))),
   );
 
-  say('表面都像：SQL 接口');
-  yield* beat('b24',
-    all(g22().opacity(0, 0.5), g24().opacity(1, 0.5)),
-    at('SQL 查询接口', all(plateL().opacity(1, 0.4), plateR().opacity(1, 0.4))),
+  say('下钻：往细里看');
+  yield* beat('i27b',
+    all(toolCard().opacity(0, 0.4), chartCard().opacity(0, 0.4), chartTitle().opacity(0, 0.3), axisLine().opacity(0, 0.3), barVals[0]().opacity(0, 0.3), barVals[1]().opacity(0, 0.3), barDates[0]().opacity(0, 0.3), barDates[1]().opacity(0, 0.3), yLab().opacity(0, 0.3), xLab().opacity(0, 0.3), qArrow27().opacity(0, 0.4), qDot().opacity(0, 0.4), sqlCard().opacity(0, 0.4), sqlTag().opacity(0, 0.4), bars[0]().opacity(0, 0.3), bars[1]().opacity(0, 0.3), opCards[0]().stroke(T.yellow, 0.4)),
+    at('往细里看', monthCard().opacity(1, 0.5)),
+    // r8：新加的“1401 就是 2014 年 1 月”半句把月汇总卡的静置拉长到 5.23s——卡片在新句处轻 pulse 一下破定格（同 r7 i14 缩放修法定格的思路；无新文字、无旁白改动）
+    at('1401 就是 2014 年 1 月', chain(monthCard().scale(1.04, 0.5), monthCard().scale(1, 0.5))),
+    at('这张汇总先只看产品 31', prodTag().opacity(1, 0.4)),
+    at('本月一共卖了 4 件', monthTotal().opacity(1, 0.4)),
+    at('再钻到每一天', chain(monthCard().opacity(0, 0.4), monthTotal().opacity(0, 0.4), prodTag().opacity(0, 0.4), all(demoTable().opacity(1, 0.5), demoRows[0]().opacity(1, 0.4), demoRows[2]().opacity(1, 0.4), demoTag.opacity(1, 0.4)))),
+    at('产品 28 那一行', demoRows[1]().opacity(0.25, 0.4)),
+    at('140102 这一天卖了 1 件', demoRows[0]().stroke(T.yellow, 0.4)),
+    at('140102 就是 2014 年 1 月 2 日', dateTag().opacity(1, 0.4)),
+    at('140103 那天卖了 3 件', demoRows[2]().stroke(T.yellow, 0.4)),
+    at('1 件加 3 件', all(
+      chain(demoRows[0]().scale(1.03, 0.3), demoRows[0]().scale(1, 0.3)),
+      chain(demoRows[2]().scale(1.03, 0.3), demoRows[2]().scale(1, 0.3)),
+      // r8 P2-5②：汇总的“4 件”在画面上有了落点（与日期小标并排）
+      totalTag().opacity(1, 0.4),
+    )),
   );
 
-  say('内部很不一样');
-  yield* beat('b25',
-    at('很不一样', all(insideL().opacity(1, 0.4), insideR().opacity(1, 0.4))),
-    at('只专注一边', forkTag().opacity(1, 0.4)),
+  say('切片：固定一个条件');
+  yield* beat('i27c',
+    all(opCards[0]().stroke(T.purple, 0.3), opCards[1]().stroke(T.yellow, 0.4)),
+    at('只看产品 31', all(demoRows[0]().stroke(T.green, 0.4), demoRows[2]().stroke(T.green, 0.4))),
+    at('灰掉了', chain(demoRows[1]().scale(1.02, 0.3), demoRows[1]().scale(1, 0.3))),
   );
 
-  say('同一产品，两个引擎');
-  yield* beat('b26',
-    all(g24().opacity(0, 0.5), g26().opacity(1, 0.5), prodBox().opacity(1, 0.5)),
-    at('SQL Server', prodTag1().opacity(1, 0.4)),
-    at('SAP HANA', prodTag2().opacity(1, 0.4)),
-    at('两个独立的存储与查询引擎', all(engTx().opacity(1, 0.4), engAn().opacity(1, 0.4))),
-    at('共用一个 SQL 接口', commonPlate().opacity(1, 0.4)),
+  say('切块：同时固定两个条件');
+  yield* beat('i27d',
+    all(opCards[1]().stroke(T.purple, 0.3), opCards[2]().stroke(T.yellow, 0.4)),
+    at('140102 这一天', all(demoRows[2]().opacity(0.25, 0.5), demoRows[2]().stroke(T.line, 0.3))),
+    at('只剩这一行还亮着', all(demoRows[0]().stroke(T.yellow, 0.4), demoRows[0]().scale(1.05, 0.4))),
   );
 
-  say('商业许可，价格昂贵');
-  yield* beat('b27a',
-    all(g26().opacity(0, 0.5), g27().opacity(1, 0.5), vendorCards[0]().opacity(1, 0.3), vendorCards[1]().opacity(1, 0.3), vendorCards[2]().opacity(1, 0.3), vendorCards[3]().opacity(1, 0.3)),
-    at('昂贵的许可', priceTag().opacity(1, 0.4)),
-    at('SAP HANA', vendorCards[2]().stroke(T.yellow, 0.4)),
-    at('单子上', all(vendorCards[0]().stroke(T.green, 0.3), vendorCards[1]().stroke(T.green, 0.3), vendorCards[3]().stroke(T.green, 0.3))),
+  say('大企业有，小公司没有');
+  yield* beat('i28a',
+    all(g26().opacity(0, 0.5), g28().opacity(1, 0.5)),
+    at('大企业', all(bigWh().opacity(1, 0.4), bigTick().opacity(1, 0.4))),
+    at('小公司', smallX().opacity(1, 0.4)),
   );
 
-  say('RedShift 是托管版');
-  yield* beat('b27b',
-    at('托管版', rsCard().opacity(1, 0.4)),
-    at('跑在云上', rsTag().opacity(1, 0.4)),
+  say('小数据，表格也够');
+  yield* beat('i28b',
+    at('常规数据库', all(smallX().opacity(0, 0.4), smallDb().opacity(1, 0.4))),
+    at('电子表格', sheetCard().opacity(1, 0.4)),
   );
 
-  say('开源项目后来居上');
-  yield* beat('b27c',
-    all(vendorCards[0]().opacity(0, 0.4), vendorCards[1]().opacity(0, 0.4), vendorCards[2]().opacity(0, 0.4), vendorCards[3]().opacity(0, 0.4), priceTag().opacity(0, 0.4), rsCard().opacity(0, 0.4), rsTag().opacity(0, 0.4)),
-    at('开源项目', chain(ossCards[0]().opacity(1, 0.3), ossCards[1]().opacity(1, 0.3), ossCards[2]().opacity(1, 0.3), ossCards[3]().opacity(1, 0.3), ossCards[4]().opacity(1, 0.3), ossCards[5]().opacity(1, 0.3))),
-    at('Hive', ossCards[0]().stroke(T.yellow, 0.4)),
-    at('Dremel', all(dremelCard().opacity(1, 0.4), dremelLines[0]().opacity(1, 0.4), dremelLines[1]().opacity(1, 0.4))),
+  say('大公司费大力气');
+  yield* beat('i28c',
+    at('费大力气', all(
+      chain(miniChips[0]().opacity(1, 0.2), miniChips[1]().opacity(1, 0.2), miniChips[2]().opacity(1, 0.2), heavyTag().opacity(1, 0.3)),
+      bigCard().stroke(T.red, 0.5),
+      effort.show(),
+      effort.to(0.9, 1.5),
+    )),
+    at('数据散在几十个系统里', causeTag().opacity(1, 0.4)),
   );
 
-  say('不是更大的数据库');
-  yield* beat('b28',
-    all(g27().opacity(0, 0.5), g28().opacity(1, 0.5)),
-    at('不是一个更大的数据库', all(biggerCard().stroke(T.red, 0.4), mythTag().opacity(1, 0.4))),
-    at('独立的', trueCards[0]().opacity(1, 0.4)),
-    at('只读的', trueCards[1]().opacity(1, 0.4)),
-    at('为分析优化', trueCards[2]().opacity(1, 0.4)),
+  say('为分析优化');
+  yield* beat('i28d',
+    all(g28().opacity(0, 0.5), ...effort.nodes().map(n => n.opacity(0, 0.3)), g19().opacity(1, 0.5)),
+    at('一大优点', all(whBody19().stroke(T.green, 0.5), modeCard().opacity(1, 0.5), modeLabel().opacity(1, 0.5))),
+    at('扫海量记录', chain(modeCard().scale(1.03, 0.4), modeCard().scale(1, 0.4))),
   );
 
-  say('下一单元：星型模式');
-  yield* beat('b29',
-    all(g28().opacity(0, 0.5), g29().opacity(1, 0.5)),
-    at('怎么摆', star().opacity(1, 0.5)),
-    at('星型模式', nextTag().opacity(1, 0.4)),
-  );
-
-  say('数据先搬家、再变形、再入库');
-  yield* beat('b30',
-    all(whBody29().opacity(0, 0.4), whLid29().opacity(0, 0.4), star().opacity(0, 0.4), nextTag().opacity(0, 0.4)),
-    at('先搬家', stepCards[0]().opacity(1, 0.4)),
-    at('再变形', stepCards[1]().opacity(1, 0.4)),
-    at('再入库', all(stepCards[2]().opacity(1, 0.4), whBody30().opacity(1, 0.4), whLid30().opacity(1, 0.4))),
-    at('自己的地盘', whBody30().stroke(T.yellow, 0.5)),
+  say('交易的索引不擅长分析');
+  yield* beat('i28e',
+    all(g19().opacity(0, 0.5), g20().opacity(1, 0.5)),
+    at('对交易很有效', txIdx().opacity(1, 0.5)),
+    at('不太擅长', all(anIdx().opacity(1, 0.5), anX().opacity(1, 0.4))),
+    at('按一个键，只能取一条记录', txIdx().stroke(T.yellow, 0.4)),
+    at('查几百万次', all(anIdx().stroke(T.yellow, 0.4), whyTag().opacity(1, 0.4))),
   );
 });

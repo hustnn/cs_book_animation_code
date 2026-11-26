@@ -1,13 +1,15 @@
-// U14 场景 2（MC）：b11–b18 —— 数据立方体二维表（按原图 3-12 重新生成）、三个 SQL 标注框、total 陷阱。
+// U14 场景 2（MC，r3）：n12–n22 —— 数据立方体二维表（按原图 3-12 重新生成）、三个 SQL 标注框、total 陷阱。
 // 分镜：skill-ch03/beats-u14.md；原文：DDIA §3.14（书页 p102，PDF p124）。
 // 原图数字逐格核对（pg-124.png）：140101 行 149.60、31.01、84.58、28.18，total 40710.53；
 // 140102 行 132.18、19.78、82.91、10.96，total 73091.28；140103 行 196.75、0.00、12.52、64.67，
 // total 54688.10；140104 行 178.36、9.98、88.75、56.16，total 95121.09；
 // 列 total：14967.09、5910.43、7328.85、6885.39；右下角 total 格写着 lots（照原样保留）。
+// r3 改动：拍号改用设计的 n 拍号；n14/n15、n16/n17、n21/n22 拆拍；n20 为演示拍（hold 2s），网格推近看省略号。
 // 时长全部来自 timeline/u14.json（beat() 驱动），不手写 waitFor。
 import {Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {Cam} from '../../lib/schemas';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u14.json';
 
@@ -239,73 +241,92 @@ export default makeScene2D(function* (view) {
       </Rect>
       <Line ref={arrowC} points={[[-212, 145], [-212, 116]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
 
-      {/* b15 加法条 */}
+      {/* n18 加法条 */}
       <Txt ref={sumTxt} position={[-50, 185]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'149.60 + 31.01 + 84.58 + 28.18 ='} opacity={0} />
       <Txt ref={sumRes} position={[215, 185]} fontSize={26} fontWeight={700} fill={T.yellow} fontFamily={FONT.mono} text={'293.37'} opacity={0} />
     </>
   );
 
+  // 推镜头：整个网格是 world，镜头只动它（不用 Motion Canvas 的 Camera 组件）。
+  const cam = new Cam(grid());
+
   say('按维度分组的聚合网格');
-  yield* beat('b11',
-    all(grid().opacity(1, 0.6), grid().scale(1.02, beat.dur('b11'))),
+  yield* beat('n12',
+    all(grid().opacity(1, 0.6), cam.focus([0, 0], 1.02, beat.dur('n12'))),
   );
 
   say('日期 × 产品');
-  yield* beat('b12',
+  yield* beat('n13',
     at('日期沿一轴', all(...rowHeads.map(t => t().opacity(1, 0.4)), dateKeyLab().opacity(1, 0.4))),
     at('产品沿另一轴', all(...colHeads.map(t => t().opacity(1, 0.4)), prodSkLab().opacity(1, 0.4))),
   );
 
   say('每格是预先算好的和');
-  yield* beat('b13',
-    at('净价之和', chain(
+  yield* beat('n14',
+    cam.focus([0, 0], 1.04, beat.dur('n14')),
+    at('每个格子', chain(
       all(dataVals[0]().opacity(1, 0.4), dataVals[1]().opacity(1, 0.4), dataVals[2]().opacity(1, 0.4), dataVals[3]().opacity(1, 0.4)),
       all(dataVals[4]().opacity(1, 0.4), dataVals[5]().opacity(1, 0.4), dataVals[6]().opacity(1, 0.4), dataVals[7]().opacity(1, 0.4)),
       all(dataVals[8]().opacity(1, 0.4), dataVals[9]().opacity(1, 0.4), dataVals[10]().opacity(1, 0.4), dataVals[11]().opacity(1, 0.4)),
       all(dataVals[12]().opacity(1, 0.4), dataVals[13]().opacity(1, 0.4), dataVals[14]().opacity(1, 0.4), dataVals[15]().opacity(1, 0.4)),
       all(...ellTxts.map(t => t().opacity(1, 0.4))),
     )),
+  );
+
+  say('149.60 是这一格的和');
+  yield* beat('n15',
     at('比如', all(boxA().opacity(1, 0.5), arrowA().opacity(1, 0.4))),
     at('一四零一零一', hlRow0().opacity(1, 0.4)),
     at('三十二号产品', hlCol0().opacity(1, 0.4)),
     at('一百四十九点六零', all(hlCell().opacity(1, 0.4), dataVals[0]().fill(T.yellow, 0.4))),
   );
 
-  say('沿行加总，沿列加总');
-  yield* beat('b14',
+  say('沿行加总');
+  yield* beat('n16',
     all(hlRow0().opacity(0, 0.4), hlCol0().opacity(0, 0.4), hlCell().opacity(0, 0.4), boxA().opacity(0, 0.4), arrowA().opacity(0, 0.4)),
-    grid().scale(1.0, beat.dur('b14')),
+    cam.reset(beat.dur('n16')),
     at('沿着每一行加总', all(...rowTotTxts.map(t => t().opacity(1, 0.4)), ...rowPlus.map(t => t().opacity(1, 0.4)))),
+  );
+
+  say('沿列加总');
+  yield* beat('n17',
+    cam.focus([0, 0], 1.03, beat.dur('n17')),
     at('沿着列加总', all(...colTotTxts.map(t => t().opacity(1, 0.4)), ...colPlus.map(t => t().opacity(1, 0.4)))),
   );
 
   say('可见 4 格 = 293.37');
-  yield* beat('b15',
+  yield* beat('n18',
     at('看得见的四格', all(sumTxt().opacity(1, 0.5), sumRes().opacity(1, 0.5))),
     at('加起来', chain(hlRowCells[0]().opacity(1, 0.3), hlRowCells[1]().opacity(1, 0.3), hlRowCells[2]().opacity(1, 0.3), hlRowCells[3]().opacity(1, 0.3))),
     at('二百九十三点三七', sumRes().scale(1.2, 0.5)),
   );
 
   say('行 total = 40710.53');
-  yield* beat('b16',
+  yield* beat('n19',
     at('行末的总计', all(boxB().opacity(1, 0.5), arrowB().opacity(1, 0.4), hlRowTot().opacity(1, 0.4))),
     at('四万零七百一十点五三', rowTotTxts[0]().fill(T.red, 0.4)),
     at('差了一百多倍', hlRowTot().scale(1.08, 0.6)),
   );
 
   say('隐藏的行列才是大头');
-  yield* beat('b17',
+  yield* beat('n20',
     all(sumTxt().opacity(0, 0.4), sumRes().opacity(0, 0.4), ...hlRowCells.map(t => t().opacity(0, 0.4)), boxB().opacity(0, 0.4), arrowB().opacity(0, 0.4), hlRowTot().opacity(0, 0.4)),
+    cam.focus([60, 0], 1.15, beat.dur('n20')),
     at('省略号藏着的行和列', all(ellRowHL().opacity(1, 0.5), ellColHL().opacity(1, 0.5))),
     at('总计把它们也算进去了', rowTotTxts[0]().fill(T.green, 0.4)),
     at('隐藏的部分才是大头', all(...ellTxts.map(t => t().fill(T.yellow, 0.4)))),
   );
 
   say('列 total = 14967.09');
-  yield* beat('b18',
+  yield* beat('n21',
     all(ellRowHL().opacity(0, 0.4), ellColHL().opacity(0, 0.4)),
+    chain(cam.reset(0.6), cam.focus([0, 0], 1.02, beat.dur('n21') - 0.6)),
     at('列的总计', all(boxC().opacity(1, 0.5), arrowC().opacity(1, 0.4), hlColTot().opacity(1, 0.4))),
     at('一万四千九百六十七点零九', colTotTxts[0]().scale(1.15, 0.5)),
+  );
+
+  say('右下角写着 lots');
+  yield* beat('n22',
     at('右下角的总计格', lotsTxt().opacity(1, 0.5)),
     at('lots', hlLots().opacity(1, 0.4)),
   );

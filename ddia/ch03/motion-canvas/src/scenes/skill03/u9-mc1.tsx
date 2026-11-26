@@ -1,14 +1,23 @@
-// U9 场景 1（MC）：b1–b10 —— 钩子、几十个业务系统各自为政、管理员看守、
-// 分析查询拖垮交易、独立数据仓库、只读副本、ETL 之抽取与转换。
+// U9 场景 1（MC）r5：i1–i11 —— 钩子、几十个业务系统各自为政、管理员看守、
+// 分析查询拖垮交易（走查拆成 i6/i7）、独立数据仓库（走查拆成 i8/i9）、
+// 只读副本（走查拆成 i10/i11）。排队用 Counter 计数；副本数据包沿曲线飞入仓库。
+// r4 改动（B33）：i9 加一句并画面对照——排队计数器归零变绿、仓库旁大查询进度条慢慢涨。
+// r5 改动（r4 新手测试）：i2 屏幕字改“比如这六个，各自为政”；i10 加小注“三路是例子，其余系统同样汇入”。
+// r7 改动（r6 新手测试 5 项 P2 + 站牌）：新增 i0 站牌（UnitTitle：第 9 站，i1 开头收成左上角页眉；旧 header 已删）；
+// i6a 扫描线扫过的点变黄（前 8 列），线停在第 8/9 列之间，未扫过的 2 列保持灰色；i11 加“写进去的，是加载过程”半句 + 小标。
+// r8 改动（r7 新手测试 P2-1）：i9 分析师→仓库的绿箭头旁加绿色小标“查询”（箭头本就是查询方向，Figure 3-8 原图 analyst —query→ 仓库；与 i11 只读对齐）。
 // 分镜：skill-ch03/beats-u9.md；原文：DDIA §3.8（书页 p91–92，PDF p113–114）。
 // 时长全部来自 timeline/u9.json（beat() 驱动），不手写 waitFor。
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
-import {all, chain, createRef} from '@motion-canvas/core';
+import {all, chain, createRef, sequence} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {Counter, Meter} from '../../lib/schemas';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
+import {UnitTitle} from '../../lib/opening';
+import {CHAPTER} from '../../lib/chapter';
 import timeline from '../../timeline/u9.json';
 
-const SYS_NAMES = ['网站', '收银', '库存', '路线规划', '供应商', '员工管理'];
+const SYS_NAMES = ['网站', '实体店收银', '库存', '路线规划', '供应商', '员工管理'];
 const SYS_POS: [number, number][] = [
   [-380, -170], [0, -170], [380, -170],
   [-380, -30], [0, -30], [380, -30],
@@ -18,11 +27,10 @@ export default makeScene2D(function* (view) {
   view.fill(T.bg);
   const beat = makeBeats(timeline);
 
-  const header = createRef<Txt>();
   const anchor = createRef<Txt>();
   const say = (text: string) => anchor().text(text);
 
-  // ---- b1–b3：六个系统 ----
+  // ---- i1–i3：六个系统 ----
   const g1 = createRef<Node>();
   const sysCards = SYS_NAMES.map(() => createRef<Rect>());
   const sysLabs = SYS_NAMES.map(() => createRef<Txt>());
@@ -30,7 +38,7 @@ export default makeScene2D(function* (view) {
   const sysLinks = [0, 1, 2].map(() => createRef<Line>());
   const g1q = createRef<Txt>();
 
-  // ---- b4：高可用、低延迟 ----
+  // ---- i4：高可用、低延迟 ----
   const g4 = createRef<Node>();
   const txCard = createRef<Rect>();
   const txArrow = createRef<Line>();
@@ -38,7 +46,7 @@ export default makeScene2D(function* (view) {
   const lowLat = createRef<Txt>();
   const highAv = createRef<Txt>();
 
-  // ---- b5：管理员看守 ----
+  // ---- i5：管理员看守 ----
   const g5 = createRef<Node>();
   const guardCard = createRef<Rect>();
   const guardPlate = createRef<Txt>();
@@ -46,15 +54,16 @@ export default makeScene2D(function* (view) {
   const analystCard = createRef<Rect>();
   const blockedTag = createRef<Txt>();
 
-  // ---- b6：分析查询拖垮交易 ----
+  // ---- i6–i7：分析查询拖垮交易 ----
   const g6 = createRef<Node>();
   const dots = Array.from({length: 40}, () => createRef<Rect>());
   const scanLine = createRef<Line>();
   const scanTag = createRef<Txt>();
   const queueCards = [0, 1, 2, 3].map(() => createRef<Rect>());
   const queueTag = createRef<Txt>();
+  const queueCount = new Counter([380, 200], '排队 ', ' 笔');
 
-  // ---- b7–b8：独立仓库 + 只读副本 ----
+  // ---- i8–i11：独立仓库 + 只读副本 ----
   const g7 = createRef<Node>();
   const oldDb = createRef<Rect>();
   const whBody = createRef<Rect>();
@@ -63,25 +72,15 @@ export default makeScene2D(function* (view) {
   const whLab = createRef<Txt>();
   const analyst7 = createRef<Rect>();
   const qArrow = createRef<Line>();
+  const qLab = createRef<Txt>();
   const txArrow7 = createRef<Line>();
   const txCard7 = createRef<Rect>();
   const packets = [0, 1, 2].map(() => createRef<Circle>());
   const miniDbs = [0, 1, 2].map(() => createRef<Rect>());
   const roTag = createRef<Txt>();
-
-  // ---- b9：抽取 ----
-  const g9 = createRef<Node>();
-  const extBox = createRef<Rect>();
-  const dumpCard = createRef<Rect>();
-  const streamCard = createRef<Rect>();
-  const extArrowL = createRef<Line>();
-  const extArrowR = createRef<Line>();
-
-  // ---- b10：转换 ----
-  const g10 = createRef<Node>();
-  const trBox = createRef<Rect>();
-  const messy = [0, 1, 2].map(() => createRef<Rect>());
-  const tidyBox = createRef<Rect>();
+  const writeTag = createRef<Txt>();
+  const othersTag = createRef<Txt>();
+  const whQuery = new Meter([540, -60], 120, {title: '仓库里的大查询', tone: T.green});
 
   const dotPos = (i: number): [number, number] => {
     const col = i % 10;
@@ -91,15 +90,6 @@ export default makeScene2D(function* (view) {
 
   view.add(
     <>
-      <Txt
-        ref={header}
-        position={[-SAFE.halfW, -SAFE.halfH]}
-        offset={[-1, -1]}
-        fontSize={SIZE.label}
-        fill={T.muted}
-        fontFamily={FONT.sans}
-        text={'数据仓库与 ETL'}
-      />
       <Txt
         ref={anchor}
         position={[0, 280]}
@@ -112,7 +102,7 @@ export default makeScene2D(function* (view) {
         text={''}
       />
 
-      {/* b1–b3：六个系统 */}
+      {/* i1–i3：六个系统 */}
       <Node ref={g1} opacity={0}>
         {SYS_NAMES.map((name, i) => (
           <Rect
@@ -147,7 +137,7 @@ export default makeScene2D(function* (view) {
         <Txt ref={g1q} position={[0, 150]} fontSize={72} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'?'} opacity={0} />
       </Node>
 
-      {/* b4：高可用、低延迟 */}
+      {/* i4：高可用、低延迟 */}
       <Node ref={g4} opacity={0}>
         <Rect ref={txCard} position={[-380, -80]} width={300} height={100} radius={14} fill={T.card} stroke={T.blue} lineWidth={2}>
           <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'一笔交易'} />
@@ -160,7 +150,7 @@ export default makeScene2D(function* (view) {
         <Txt ref={highAv} position={[200, 20]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'高可用：对业务至关重要'} opacity={0} />
       </Node>
 
-      {/* b5：管理员看守 */}
+      {/* i5：管理员看守 */}
       <Node ref={g5} opacity={0}>
         <Rect ref={guardCard} position={[-420, -80]} width={220} height={100} radius={14} fill={T.card} stroke={T.green} lineWidth={2}>
           <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'管理员'} />
@@ -175,7 +165,7 @@ export default makeScene2D(function* (view) {
         <Txt ref={blockedTag} position={[420, 20]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'即席查询：不让跑'} opacity={0} />
       </Node>
 
-      {/* b6：分析查询拖垮交易 */}
+      {/* i6–i7：分析查询拖垮交易 */}
       <Node ref={g6} opacity={0}>
         {dots.map((_, i) => (
           <Rect
@@ -211,8 +201,10 @@ export default makeScene2D(function* (view) {
         ))}
         <Txt ref={queueTag} position={[380, 150]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'排队变慢'} opacity={0} />
       </Node>
+      {queueCount.node}
+      {whQuery.nodes()}
 
-      {/* b7–b8：独立仓库 */}
+      {/* i8–i11：独立仓库 */}
       <Node ref={g7} opacity={0}>
         <Rect ref={oldDb} position={[-80, -60]} width={300} height={110} radius={14} fill={T.card} stroke={T.line} lineWidth={2}>
           <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'交易数据库'} />
@@ -230,6 +222,8 @@ export default makeScene2D(function* (view) {
           <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'分析师'} />
         </Rect>
         <Line ref={qArrow} points={[[70, 130], [110, -60]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
+        {/* r8：箭头中点右侧的小标，点明这支箭头是“查询”不是写（与 i11 只读对齐）；箭头在 y=35 处 x≈90，小标 [130,35] 离线 18px、离仓库底边 19px */}
+        <Txt ref={qLab} position={[130, 35]} fontSize={SIZE.label} fontWeight={700} fill={T.green} fontFamily={FONT.sans} text={'查询'} opacity={0} />
         {[0, 1, 2].map(i => (
           <Rect
             key={`mini-${i}`}
@@ -250,64 +244,30 @@ export default makeScene2D(function* (view) {
           <Circle key={`pkt-${i}`} ref={packets[i]} position={[-480, -250 + i * 70]} width={22} height={22} fill={T.yellow} opacity={0} />
         ))}
         <Txt ref={roTag} position={[280, 60]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'只读副本'} opacity={0} />
-      </Node>
-
-      {/* b9：抽取 */}
-      <Node ref={g9} opacity={0}>
-        <Rect ref={dumpCard} position={[-400, -80]} width={280} height={90} radius={14} fill={T.card} stroke={T.line} lineWidth={2}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'定期转储'} />
-        </Rect>
-        <Rect ref={streamCard} position={[400, -80]} width={280} height={90} radius={14} fill={T.card} stroke={T.line} lineWidth={2}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'连续更新流'} />
-        </Rect>
-        <Line ref={extArrowL} points={[[-260, -80], [-140, -80]]} stroke={T.blue} lineWidth={3} endArrow opacity={0} />
-        <Line ref={extArrowR} points={[[260, -80], [140, -80]]} stroke={T.blue} lineWidth={3} endArrow opacity={0} />
-        <Rect ref={extBox} position={[0, -80]} width={260} height={90} radius={14} fill={T.card} stroke={T.yellow} lineWidth={3} opacity={0}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'抽取'} />
-        </Rect>
-      </Node>
-
-      {/* b10：转换 */}
-      <Node ref={g10} opacity={0}>
-        {[0, 1, 2].map(i => (
-          <Rect
-            key={`messy-${i}`}
-            ref={messy[i]}
-            position={[-420, -160 + i * 80]}
-            width={240}
-            height={56}
-            radius={10}
-            fill={T.card}
-            stroke={T.red}
-            lineWidth={2}
-            opacity={0}
-          >
-            <Txt fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.mono} text={['杂：a=1;b=2', '杂：x|y|z', '杂：9?4!'][i]} />
-          </Rect>
-        ))}
-        <Rect ref={trBox} position={[0, -80]} width={260} height={90} radius={14} fill={T.card} stroke={T.yellow} lineWidth={3} opacity={0}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'转换'} />
-        </Rect>
-        <Rect ref={tidyBox} position={[400, -80]} width={280} height={150} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt position={[0, -40]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'日期 | 产品 | 数量'} />
-          <Txt position={[0, 0]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'140102 | 31 | 1'} />
-          <Txt position={[0, 40]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'适合分析的模式'} />
-        </Rect>
+        <Txt ref={writeTag} position={[280, 140]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.sans} text={'写进去的是加载过程'} opacity={0} />
+        <Txt ref={othersTag} position={[280, 105]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'三路是例子，其余系统同样汇入'} opacity={0} />
       </Node>
     </>
   );
 
+  // i0：单元站牌（r7，skill v1.11.0 开篇规则）：站牌在 i1 开头收成左上角页眉
+  const unit = new UnitTitle(CHAPTER, 'u9');
+  view.add(unit.nodes());
+
+  yield* beat('i0', unit.enter());
+
   say('几十个库，怎么凑一起算？');
-  yield* beat('b1',
+  yield* beat('i1',
+    unit.toHeader(),
     all(g1().opacity(1, 0.5)),
     at('几十个业务库', chain(sysCards[0]().opacity(1, 0.4), sysCards[1]().opacity(1, 0.4), sysCards[2]().opacity(1, 0.4), sysCards[3]().opacity(1, 0.4), sysCards[4]().opacity(1, 0.4), sysCards[5]().opacity(1, 0.4))),
     at('凑到一起算', chain(g1q().opacity(1, 0.4), g1q().scale(1.15, 0.8))),
   );
 
-  say('六个系统，各自为政');
-  yield* beat('b2',
+  say('比如这六个，各自为政');
+  yield* beat('i2',
     at('网站', sysLabs[0]().opacity(1, 0.4)),
-    at('收银', sysLabs[1]().opacity(1, 0.4)),
+    at('实体店收银', sysLabs[1]().opacity(1, 0.4)),
     at('库存', sysLabs[2]().opacity(1, 0.4)),
     at('路线规划', sysLabs[3]().opacity(1, 0.4)),
     at('供应商', sysLabs[4]().opacity(1, 0.4)),
@@ -315,14 +275,14 @@ export default makeScene2D(function* (view) {
   );
 
   say('各自独立运行');
-  yield* beat('b3',
+  yield* beat('i3',
     all(sysLinks[0]().opacity(0.5, 0.4), sysLinks[1]().opacity(0.5, 0.4), sysLinks[2]().opacity(0.5, 0.4)),
     at('一个团队', chain(sysTeams[0]().opacity(1, 0.3), sysTeams[1]().opacity(1, 0.3), sysTeams[2]().opacity(1, 0.3), sysTeams[3]().opacity(1, 0.3), sysTeams[4]().opacity(1, 0.3), sysTeams[5]().opacity(1, 0.3))),
     at('各自独立运行', all(sysLinks[0]().opacity(0.12, 0.6), sysLinks[1]().opacity(0.12, 0.6), sysLinks[2]().opacity(0.12, 0.6))),
   );
 
   say('高可用、低延迟');
-  yield* beat('b4',
+  yield* beat('i4',
     all(g1().opacity(0, 0.5), g4().opacity(1, 0.5)),
     at('高可用', highAv().opacity(1, 0.4)),
     at('低延迟', all(lowLat().opacity(1, 0.4), txArrow().opacity(1, 0.4))),
@@ -330,51 +290,83 @@ export default makeScene2D(function* (view) {
   );
 
   say('管理员严密看守');
-  yield* beat('b5',
+  yield* beat('i5',
     all(g4().opacity(0, 0.5), g5().opacity(1, 0.5)),
     at('严密看守', guardPlate().opacity(1, 0.4)),
     at('分析师', analystCard().opacity(1, 0.5)),
     at('即席分析查询', blockedTag().opacity(1, 0.4)),
+    at('想查什么就查什么', blockedTag().scale(1.08, 0.5)),
   );
 
-  say('分析查询拖垮交易');
-  yield* beat('b6',
+  say('分析查询很贵');
+  yield* beat('i6',
     all(g5().opacity(0, 0.5), g6().opacity(1, 0.5), ...dots.map(d => d().opacity(1, 0.4))),
-    at('扫数据集的大部分', all(scanLine().opacity(1, 0.4), scanTag().opacity(1, 0.4), scanLine().position([620, 0], 2.2))),
-    at('并发执行的事务', chain(queueCards[0]().opacity(1, 0.25), queueCards[1]().opacity(1, 0.25), queueCards[2]().opacity(1, 0.25), queueCards[3]().opacity(1, 0.25), queueTag().opacity(1, 0.3))),
   );
 
-  say('独立仓库，随便查');
-  yield* beat('b7',
-    all(g6().opacity(0, 0.5), g7().opacity(1, 0.5)),
-    at('另建一个库', all(whBody().opacity(1, 0.5), whLid().opacity(1, 0.5))),
-    at('数据仓库', all(whLab().opacity(1, 0.4), whTag().opacity(1, 0.4))),
-    at('不影响交易', all(txCard7().opacity(1, 0.4), txArrow7().opacity(1, 0.4), analyst7().opacity(1, 0.4), qArrow().opacity(1, 0.5))),
-  );
-
-  say('只读副本');
-  yield* beat('b8',
-    at('全部业务库数据', chain(miniDbs[0]().opacity(1, 0.3), miniDbs[1]().opacity(1, 0.3), miniDbs[2]().opacity(1, 0.3))),
-    at('只读副本', all(
-      packets[0]().opacity(1, 0.2), packets[0]().position([280, -60], 0.9),
-      packets[1]().opacity(1, 0.2), packets[1]().position([280, -60], 0.9),
-      packets[2]().opacity(1, 0.2), packets[2]().position([280, -60], 0.9),
-      roTag().opacity(1, 0.3),
+  say('扫数据集的大部分');
+  yield* beat('i6a',
+    // r7：线扫过的点变黄（前 8 列 = 大部分），线停在第 8/9 列之间（x=-190），未扫过的 2 列保持灰色；
+    // 线 2.2s 走完 330px，每列约 0.29s，点变色与线的位置同步。
+    at('扫数据集的大部分', all(
+      scanLine().opacity(1, 0.4),
+      scanTag().opacity(1, 0.4),
+      scanLine().position([330, 0], 2.2),
+      sequence(0.29, ...Array.from({length: 8}, (_, c) =>
+        all(...dots.filter((_, i) => i % 10 === c).map(d => d().fill(T.yellow, 0.3))),
+      )),
     )),
   );
 
-  say('第一步：抽取');
-  yield* beat('b9',
-    all(g7().opacity(0, 0.5), g9().opacity(1, 0.5)),
-    at('抽取', all(extBox().opacity(1, 0.5), extArrowL().opacity(1, 0.4), extArrowR().opacity(1, 0.4))),
-    at('定期转储', dumpCard().stroke(T.yellow, 0.4)),
-    at('连续的更新流', streamCard().stroke(T.yellow, 0.4)),
+  say('并发事务排队变慢');
+  yield* beat('i7',
+    at('并发执行的事务', chain(
+      all(queueCards[0]().opacity(1, 0.25), queueCount.node.opacity(1, 0.3), queueCount.bump()),
+      all(queueCards[1]().opacity(1, 0.25), queueCount.bump()),
+      all(queueCards[2]().opacity(1, 0.25), queueCount.bump()),
+      all(queueCards[3]().opacity(1, 0.25), queueCount.bump()),
+    )),
+    at('越等越慢', queueTag().opacity(1, 0.3)),
   );
 
-  say('第二步：转换');
-  yield* beat('b10',
-    all(g9().opacity(0, 0.5), g10().opacity(1, 0.5)),
-    at('转换', all(trBox().opacity(1, 0.5), messy[0]().opacity(1, 0.3), messy[1]().opacity(1, 0.3), messy[2]().opacity(1, 0.3))),
-    at('适合分析的模式', tidyBox().opacity(1, 0.5)),
+  say('独立仓库');
+  yield* beat('i8',
+    all(g6().opacity(0, 0.5), queueCount.node.opacity(0, 0.3), g7().opacity(1, 0.5)),
+    at('另建一个库', all(whBody().opacity(1, 0.5), whLid().opacity(1, 0.5))),
+    at('数据仓库', all(whLab().opacity(1, 0.4), whTag().opacity(1, 0.4))),
+  );
+
+  say('排队归零，也不堵交易');
+  yield* beat('i9',
+    at('尽情查询', all(analyst7().opacity(1, 0.4), qArrow().opacity(1, 0.5), qLab().opacity(1, 0.4))),
+    at('不影响交易', all(txCard7().opacity(1, 0.4), txArrow7().opacity(1, 0.4))),
+    at('排队的交易恢复正常', chain(queueCount.node.opacity(1, 0.3), queueCount.reset(1.2), queueCount.node.fill(T.green, 0.4))),
+    at('仓库里的大查询', chain(whQuery.show(0.5), whQuery.to(0.7, 2.5))),
+  );
+
+  say('全部业务库的副本');
+  yield* beat('i10',
+    at('其余的系统', othersTag().opacity(1, 0.4)),
+    at('全部业务库数据', chain(
+      miniDbs[0]().opacity(1, 0.3),
+      miniDbs[1]().opacity(1, 0.3),
+      miniDbs[2]().opacity(1, 0.3),
+      all(
+        packets[0]().opacity(1, 0.2), packets[0]().position([-120, -290], 0.9),
+        packets[1]().opacity(1, 0.2), packets[1]().position([-120, -220], 0.9),
+        packets[2]().opacity(1, 0.2), packets[2]().position([-120, -150], 0.9),
+      ),
+      all(
+        packets[0]().position([280, -60], 0.9),
+        packets[1]().position([280, -60], 0.9),
+        packets[2]().position([280, -60], 0.9),
+      ),
+    )),
+  );
+
+  say('只读副本');
+  yield* beat('i11',
+    at('只读的', all(roTag().opacity(1, 0.3), whBody().stroke(T.green, 0.5))),
+    at('只能查', qArrow().stroke(T.green, 0.4)),
+    at('写进去的', writeTag().opacity(1, 0.4)),
   );
 });

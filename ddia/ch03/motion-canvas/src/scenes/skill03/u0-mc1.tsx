@@ -1,6 +1,6 @@
-// U0 场景 1（MC）：b1–b11 —— 开场总述：钩子、德语谚语引言卡（全章唯一文字卡）、
-// 存/取两件事、应用与数据库分工、排法决定找的速度、两条路分叉图、两大学派时间线、
-// 事务与分析路线、结尾句。分镜：skill-ch03/beats-u0.md；原文：DDIA §3.0（书页 p69–70，PDF p91–92）。
+// U0 场景 1（MC）：b1–b11（含 r2 新增 b4a/b4b）—— 开场总述：钩子、德语谚语引言卡（全章唯一文字卡）、
+// 存/取两件事、应用与数据库分工、选引擎/调优（3.0-4，r2 从 U1 移回）、排法决定找的速度、两条路分叉图、
+// 两大学派时间线、事务与分析路线、结尾句。分镜：skill-ch03/beats-u0.md；原文：DDIA §3.0（书页 p69–70，PDF p91–92）。
 // 时长全部来自 timeline/u0.json（beat() 驱动），不手写 waitFor。
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
@@ -49,10 +49,17 @@ export default makeScene2D(function* (view) {
   const g4r2 = createRef<Txt>();
   const g4arrow = createRef<Line>();
 
+  // b4a/b4b：选引擎 / 调优（3.0-4，r2 从 U1 移回）
+  const g4x = createRef<Node>();
+  const g4xpick = createRef<Rect>();
+  const g4xtune = createRef<Rect>();
+
   // b5：乱序 vs 有序
   const g5 = createRef<Node>();
   const g5dot = createRef<Circle>();
   const g5mag = createRef<Circle>();
+  const g5scanLab = createRef<Txt>();
+  const g5fastLab = createRef<Txt>();
   const ordBlocks = [0, 1, 2, 3, 4, 5].map(() => createRef<Rect>());
 
   // b6/b7/b11：两条路分叉图
@@ -64,6 +71,7 @@ export default makeScene2D(function* (view) {
   const forkRight = createRef<Rect>();
   const forkArrow = createRef<Line>();
   const forkAppend = createRef<Txt>();
+  const forkPageLab = createRef<Txt>();
   const forkPages = [0, 1, 2].map(() => createRef<Rect>());
 
   // b8a/b8b/b9：两大学派时间线
@@ -85,6 +93,8 @@ export default makeScene2D(function* (view) {
   const routeRight = createRef<Rect>();
   const routeTx = createRef<Rect>();
   const routeAn = createRef<Rect>();
+  const routeTxLab = createRef<Txt>();
+  const routeAnLab = createRef<Txt>();
 
   // b11：结尾句
   const endTxt = createRef<Txt>();
@@ -158,6 +168,16 @@ export default makeScene2D(function* (view) {
         <Line ref={g4arrow} points={[[-60, -60], [60, -60]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
       </Node>
 
+      {/* b4a/b4b：选引擎 / 调优 */}
+      <Node ref={g4x} opacity={0}>
+        <Rect ref={g4xpick} position={[0, -140]} width={640} height={110} radius={16} fill={T.card} stroke={T.blue} lineWidth={3}>
+          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'选一个合适的引擎'} />
+        </Rect>
+        <Rect ref={g4xtune} position={[0, 10]} width={640} height={110} radius={16} fill={T.card} stroke={T.blue} lineWidth={3} opacity={0}>
+          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'调优到自己的负载'} />
+        </Rect>
+      </Node>
+
       {/* b5：乱序 vs 有序 */}
       <Node ref={g5} opacity={0}>
         <Txt position={[-500, -120]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'乱序'} />
@@ -174,6 +194,8 @@ export default makeScene2D(function* (view) {
         ))}
         <Circle ref={g5dot} position={[-325, -85]} width={14} height={14} fill={T.muted} opacity={0} />
         <Circle ref={g5mag} position={[-325, 20]} width={76} height={76} stroke={T.yellow} lineWidth={3} opacity={0} />
+        <Txt ref={g5scanLab} position={[480, -120]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'扫全行'} opacity={0} />
+        <Txt ref={g5fastLab} position={[480, 20]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'一下找到'} opacity={0} />
       </Node>
 
       {/* b6/b7/b11：分叉图 */}
@@ -188,7 +210,8 @@ export default makeScene2D(function* (view) {
           <Txt position={[0, -35]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'页式'} />
         </Rect>
         <Line ref={forkArrow} points={[[-460, 30], [-180, 30]]} stroke={T.green} lineWidth={3} endArrow opacity={0} />
-        <Txt ref={forkAppend} position={[-320, 65]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'追加'} opacity={0} />
+        <Txt ref={forkAppend} position={[-320, 65]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'排法：只往后追加'} opacity={0} />
+        <Txt ref={forkPageLab} position={[320, 125]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.sans} text={'排法：只改这一页'} opacity={0} />
         {[0, 1, 2].map(i => (
           <Rect
             key={`u0-pg-${i}`}
@@ -210,8 +233,9 @@ export default makeScene2D(function* (view) {
         <Line ref={tlLine} points={[[-500, 0], [500, 0]]} stroke={T.line} lineWidth={3} />
         <Circle ref={n1970} position={[-400, 0]} width={28} height={28} fill={T.blue} opacity={0} />
         <Txt ref={lab1970} position={[-400, 50]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'1970'} opacity={0} />
-        <Rect ref={plate1970} position={[-400, -70]} width={200} height={64} radius={12} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'B 树'} />
+        <Rect ref={plate1970} position={[-400, -70]} width={200} height={96} radius={12} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
+          <Txt position={[0, -16]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'B 树'} />
+          <Txt position={[0, 20]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'页式一家'} />
         </Rect>
         <Circle ref={n1990} position={[0, 0]} width={28} height={28} fill={T.blue} opacity={0} />
         <Txt ref={lab1990} position={[0, 50]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'1990年代'} opacity={0} />
@@ -241,6 +265,8 @@ export default makeScene2D(function* (view) {
         <Rect ref={routeAn} position={[290, 130]} width={200} height={64} radius={12} fill={T.card} stroke={T.purple} lineWidth={2} opacity={0}>
           <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'分析'} />
         </Rect>
+        <Txt ref={routeTxLab} position={[-290, 195]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} textAlign={'center'} textWrap maxWidth={400} text={'一次动少量记录，要快'} opacity={0} />
+        <Txt ref={routeAnLab} position={[290, 195]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} textAlign={'center'} textWrap maxWidth={400} text={'一次扫大量记录，算数'} opacity={0} />
       </Node>
 
       <Txt ref={endTxt} position={[0, 180]} fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'两种排法，各自的代价'} opacity={0} />
@@ -278,17 +304,30 @@ export default makeScene2D(function* (view) {
     at('怎么找', g4r2().opacity(1, 0.4)),
   );
 
-  say('排法决定找的速度');
-  yield* beat('b5',
-    all(g4().opacity(0, 0.5), g5().opacity(1, 0.5)),
-    chain(g5dot().opacity(1, 0.3), g5dot().position([325, -85], 2.0)),
-    at('问的时候', chain(g5mag().opacity(1, 0.3), g5mag().position([65, 20], 1.2))),
-    at('找得多快', ordBlocks[3]().stroke(T.yellow, 0.3)),
+  say('为什么要关心底层？');
+  yield* beat('b4a',
+    all(g4().opacity(0, 0.5), g4x().opacity(1, 0.5)),
+    at('关心数据库底层', g4xpick().stroke(T.yellow, 0.4)),
   );
 
-  say('日志结构，页式存储');
+  say('选合适的，调到最好');
+  yield* beat('b4b',
+    all(g4xtune().opacity(1, 0.5), g4x().scale(1.02, beat.dur('b4b'))),
+    at('调优', g4xtune().stroke(T.yellow, 0.4)),
+    at('自己的负载', g4xpick().stroke(T.blue, 0.4)),
+  );
+
+  say('排法决定找的速度');
+  yield* beat('b5',
+    all(g4x().opacity(0, 0.5), g5().opacity(1, 0.5)),
+    chain(g5dot().opacity(1, 0.3), g5scanLab().opacity(1, 0.4), g5dot().position([325, -85], 2.0)),
+    at('问的时候', chain(g5mag().opacity(1, 0.3), g5mag().position([65, 20], 1.2))),
+    at('找得多快', all(ordBlocks[3]().stroke(T.yellow, 0.3), g5fastLab().opacity(1, 0.4))),
+  );
+
+  say('排法不同，就是两家的区别');
   yield* beat('b6',
-    all(g5().opacity(0, 0.5), forkG().opacity(1, 0.5)),
+    all(g5().opacity(0, 0.5), forkG().opacity(1, 0.5), forkG().scale(1.015, beat.dur('b6'))),
     at('日志结构', forkLeft().opacity(1, 0.5)),
     at('页式存储', forkRight().opacity(1, 0.5)),
   );
@@ -297,7 +336,7 @@ export default makeScene2D(function* (view) {
   yield* beat('b7',
     at('只往后追加', all(forkArrow().opacity(1, 0.5), forkAppend().opacity(1, 0.4))),
     at('一页一页', chain(forkPages[0]().opacity(1, 0.4), forkPages[1]().opacity(1, 0.4), forkPages[2]().opacity(1, 0.4))),
-    at('原地改', forkPages[1]().stroke(T.yellow, 0.3)),
+    at('原地改', all(forkPages[1]().stroke(T.yellow, 0.3), forkPageLab().opacity(1, 0.4))),
   );
 
   say('1970 年，B 树');
@@ -325,6 +364,13 @@ export default makeScene2D(function* (view) {
     at('前半段', routeLeft().stroke(T.blue, 0.3)),
     at('后半段', routeRight().stroke(T.purple, 0.3)),
     at('事务和分析', all(routeTx().opacity(1, 0.5), routeAn().opacity(1, 0.5))),
+  );
+
+  say('事务动少量要快，分析扫大量算数');
+  yield* beat('b10a',
+    all(routeG().scale(1.015, beat.dur('b10a'))),
+    at('一次只动少量记录', all(routeTx().stroke(T.yellow, 0.3), routeTxLab().opacity(1, 0.4))),
+    at('一次扫大量记录', all(routeAn().stroke(T.yellow, 0.3), routeAnLab().opacity(1, 0.4))),
   );
 
   say('两种排法，各自的代价');
