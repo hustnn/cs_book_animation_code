@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Assemble U2 r6 unit film from the 4 rendered scenes + voice + subtitles.
+
+Run from ~/workspace/ddia-animation-demo/ch03/skill-ch03, under the render lock:
+  export RENDER_LOCK_PATH=~/workspace/ddia-animation-demo/.render-lock
+  python ~/workspace/custom-skills/textbook-to-animation/scripts/render_lock.py \\
+    run u2-assemble-r6 -- python assemble-u2-r6.py
+
+Steps (skill references/motion-canvas.md §6):
+1. Pre-flight: each scene mp4's video-track duration must match its container
+   duration and its frame count must match duration x 30fps (a truncated scene
+   file can hide behind a full-length audio track); full-decode 0 errors.
+   Verified scenes are copied to rounds/u2/r6/stage/ first, so a later
+   env-probe by another agent cannot rewrite the files mid-assembly
+   (r2 lesson: probe rewrote output/u2-mc1.mp4 to 48 bytes).
+2. Concat the 4 scene videos (re-encode, no -shortest) -> rounds/u2/r6/u2-silent.mp4
+3. Concat the voice wavs per audio/u2.txt -> rounds/u2/r6/u2-voice.wav
+4. Mux silent + voice + subs/u2.srt (mov_text soft subtitles) -> rounds/u2/r6/u2.mp4
+5. Verify: ffprobe duration/size/streams, full-decode 0 errors, subtitle count.
+"""
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent  # skill-ch03/
+MC = ROOT.parent / "motion-canvas"
+R6 = ROOT / "rounds" / "u2" / "r6"
+SCENES = ["u2-mc1", "u2-mc2", "u2-mc3", "u2-mc4"]
+# r6 expected scene durations (s), from timeline (total 496.02s):
+# mc1 151.41 (b0-b13), mc2 120.60 (b14a-b24), mc3 129.98 (b25-b32b), mc4 94.03 (b33-b40)
+
+
+def run(cmd, **kw):
+    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    if r.returncode != 0:
+        print("FAIL:", " ".join(str(c) for c in cmd))
+        print(r.stdout[-2000:])
+        print(r.stderr[-2000:])
+        sys.exit(1)
+    return r
+
+
+def probe(path):
+    out = run(["ffprobe", "-v", "error", "-show_entries",
+               "format=duration:stream=duration,nb_frames,codec_type",
+               "-of", "json", str(path)]).stdout
+    data = json.loads(out)
+    return {"format": [[data["format"]["duration"]]],
+            "stream": [[s["duration"], str(s["nb_frames"]), s["codec_type"]]
+                       for s in data["streams"] if s["codec_type"] == "video"]}
+
+
+def main():
+    R6.mkdir(parents=True, exist_ok=True)
+    stage = R6 / "stage"
+    stage.mkdir(parents=True, exist_ok=True)
+    # 1. Pre-flight on scene files + stage copies
+    total_frames = 0
+    for s in SCENES:
+        p = MC / "output" / f"{s}.mp4"
+        if not p.exists() or p.stat().st_size == 0:
+            print(f"FAIL: missing/empty scene file {p}")
+            sys.exit(1)
+        vals = probe(p)
+        dur = float(vals["format"][0][0]) if "format" in vals else None
+        print(f"{s}: {p.stat().st_size}B container={dur}s")
+        out = run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                   "-show_entries", "stream=duration,nb_frames,r_frame_rate",
+                   "-of", "default=noprint_wrappers=1", str(p)]).stdout
+        d = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
+        vdur, nframes = float(d["duration"]), int(d["nb_frames"])
+        expect = round(vdur * 30)
+        print(f"  video dur={vdur}s frames={nframes} expect~{expect}")
+        if abs(vdur - dur) > 0.05:
+            print(f"FAIL: {s} video-track duration != container duration")
+            sys.exit(1)
+        if abs(nframes - expect) > 2:
+            print(f"FAIL: {s} frame count {nframes} != duration x 30fps ({expect})")
+            sys.exit(1)
+        total_frames += nframes
+        dec = run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(p),
+                   "-f", "null", "-"]).stderr.strip()
+        print(f"  full-decode stderr: {dec or '(clean)'}")
+        if dec:
+            print(f"FAIL: {s} decode errors")
+            sys.exit(1)
+        shutil.copy2(p, stage / f"{s}.mp4")
+        print(f"  staged -> {stage / (s + '.mp4')}")
+
+    # 2. Concat video (from stage copies)
+    vlist = R6 / "u2-video.txt"
+    vlist.write_text("".join(f"file '{stage / (s + '.mp4')}'\n" for s in SCENES))
+    silent = R6 / "u2-silent.mp4"
+    run(["ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", str(vlist),
+         "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-r", "30", "-an", str(silent)])
+    # 3. Concat voice
+    voice = R6 / "u2-voice.wav"
+    run(["ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0", "-i", str(ROOT / "audio" / "u2.txt"),
+         "-c:a", "pcm_s16le", str(voice)])
+    # 4. Mux (no -shortest)
+    film = R6 / "u2.mp4"
+    run(["ffmpeg", "-nostdin", "-y", "-i", str(silent), "-i", str(voice),
+         "-i", str(ROOT / "subs" / "u2.srt"),
+         "-map", "0:v", "-map", "1:a", "-map", "2",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text", str(film)])
+    # 5. Verify
+    out = run(["ffprobe", "-v", "error", "-show_entries",
+               "format=duration,size:stream=codec_type,codec_name",
+               "-of", "default=noprint_wrappers=1", str(film)]).stdout
+    print(out)
+    dec = run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(film),
+               "-f", "null", "-"]).stderr.strip()
+    print("full-decode stderr:", dec or "(clean)")
+    if dec:
+        print("FAIL: decode errors")
+        sys.exit(1)
+    srt = (ROOT / "subs" / "u2.srt").read_text(encoding="utf-8")
+    n_sub = srt.count("-->")
+    print(f"subtitles: {n_sub}, film size: {film.stat().st_size}B, total scene frames: {total_frames}")
+    print("ASSEMBLE-OK", film)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,11 +1,19 @@
-// U1 场景 2（MC）：b13a–b24 —— 索引是路标、派生与写开销、读快写慢天平、
-// 手工选索引、边界三问题、log 两层意思、回扣。
-// 分镜：skill-ch03/beats-u1.md；原文：DDIA §3.1（书页 p71，PDF p93）。
-// 时长全部来自 timeline/u1.json（beat() 驱动），不手写 waitFor。
+// U1 场景 2（MC）：a14–a23 —— 索引是路标：无索引扫 3 行、建路标跳过去、
+// 再写改指行 4、删路标回到扫全文件、两个路标。分镜：skill-ch03/beats-u1.md；
+// 原文：DDIA §3.1。时长全部来自 timeline/u1.json（beat() 驱动）。
+// r2 新版：拍号 a 系；走查按设计补全五步；计数器数扫描行数；
+// a19 第四行是走查用的新值（示例值，非原文）。
+// r4：a17b 讲到“路标里四十二指第三行”时连线箭头从路标 42 一格指向文件第 3 行；
+// a19 第四行旁加“示意”小标（与 U10/U12 同一套标注）；新增 a23b/a23c 两拍（名字字段）。
+// r5：a15 前指加三处跟旁白展开的动作；a19 念到“渔人码头”时新行变黄；
+// 新增 a23d（一个名字可以指多行）：按名字查的路标补“旧金山 → 第 2 行、第 3 行”。
+// r6：a17b 建路标时同一个键后读到的盖掉先读到的（路标行闪一下）；a19 第四行 JSON 通条亮出
+// （名字还是旧金山、景点是渔人码头）；a23d 旧金山条目改成“第 2、3、4 行”，第 4 行同黄。
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
+import {Counter} from '../../lib/schemas';
 import timeline from '../../timeline/u1.json';
 
 export default makeScene2D(function* (view) {
@@ -16,7 +24,6 @@ export default makeScene2D(function* (view) {
   const anchor = createRef<Txt>();
   const say = (text: string) => anchor().text(text);
 
-  // ---- 索引 + 文件 ----
   const idx = createRef<Node>();
   const fileBox = createRef<Rect>();
   const frow1 = createRef<Txt>();
@@ -28,57 +35,20 @@ export default makeScene2D(function* (view) {
   const card1Line1 = createRef<Txt>();
   const card1Line2 = createRef<Txt>();
   const card2 = createRef<Rect>();
+  const card2Line2 = createRef<Txt>();
   const arrow1 = createRef<Line>();
   const arrow2 = createRef<Line>();
   const signTag = createRef<Txt>();
+  const staleTag = createRef<Txt>();
+  const fishNote = createRef<Txt>();
+  const row4json = createRef<Rect>();
   const sameTag = createRef<Txt>();
+  const scan = createRef<Rect>();
+  const dot = createRef<Circle>();
+  const jumpTag = createRef<Txt>();
+  const hl3 = createRef<Rect>();
 
-  // ---- 两条写路径 ----
-  const paths = createRef<Node>();
-  const pathA = createRef<Rect>();
-  const pathB = createRef<Rect>();
-  const barA = createRef<Rect>();
-  const barB = createRef<Rect>();
-  const barALab = createRef<Txt>();
-  const barBLab = createRef<Txt>();
-
-  // ---- 天平 ----
-  const scale = createRef<Node>();
-  const beam = createRef<Line>();
-  const fulcrum = createRef<Txt>();
-  const panRead = createRef<Rect>();
-  const panWrite = createRef<Rect>();
-
-  // ---- 手工选 ----
-  const pick = createRef<Node>();
-  const pickCard = createRef<Rect>();
-  const patCards = [0, 1, 2].map(() => createRef<Rect>());
-  const patTag = createRef<Txt>();
-
-  // ---- 边界三问题 ----
-  const issues = createRef<Node>();
-  const issueCards = [0, 1, 2].map(() => createRef<Rect>());
-  const logBar = createRef<Rect>();
-
-  // ---- log 两层意思 ----
-  const logs = createRef<Node>();
-  const appLog = createRef<Rect>();
-  const appLogTitle = createRef<Txt>();
-  const appLogLines = createRef<Node>();
-  const binLog = createRef<Rect>();
-  const binLogTitle = createRef<Txt>();
-  const binLogLines = createRef<Node>();
-  const notEq = createRef<Txt>();
-  const notEqTag = createRef<Txt>();
-
-  // ---- 收尾：文件 + 路标 ----
-  const fin = createRef<Node>();
-  const finFile = createRef<Rect>();
-  const finRow1 = createRef<Txt>();
-  const finRow2 = createRef<Txt>();
-  const finCard = createRef<Rect>();
-  const finArrow = createRef<Line>();
-  const finDot = createRef<Circle>();
+  const scanCounter = new Counter([0, 230], '已扫 ', ' 行');
 
   view.add(
     <>
@@ -111,227 +81,164 @@ export default makeScene2D(function* (view) {
         <Txt ref={frow1} position={[-280, -120]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'123456 → 伦敦'} opacity={0} />
         <Txt ref={frow2} position={[-280, -60]} fontSize={22} fill={T.muted} fontFamily={FONT.mono} text={'42 → 金门大桥（旧）'} opacity={0} />
         <Txt ref={frow3} position={[-280, 0]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'42 → 探索馆'} opacity={0} />
-        <Txt ref={frow4} position={[-280, 60]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'7 → 新记录'} opacity={0} />
+        <Txt ref={frow4} position={[-280, 60]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'42 → 渔人码头'} opacity={0} />
+        <Txt ref={fishNote} position={[-180, 60]} offset={[-1, 0]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'示意'} opacity={0} />
+        <Rect ref={hl3} position={[-280, 0]} width={480} height={36} stroke={T.yellow} lineWidth={3} opacity={0} />
         <Rect ref={card1} position={[380, 0]} width={300} height={130} radius={16} fill={T.card} stroke={T.blue} lineWidth={3}>
           <Txt ref={card1Title} position={[0, -38]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'索引：按键查'} />
-          <Txt ref={card1Line1} position={[0, 0]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'42 → 第 3 行'} />
-          <Txt ref={card1Line2} position={[0, 36]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'7 → 第 4 行'} opacity={0} />
+          <Txt ref={card1Line1} position={[0, 0]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'123456 → 第 1 行'} opacity={0} />
+          <Txt ref={card1Line2} position={[0, 36]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'42 → 第 3 行'} opacity={0} />
         </Rect>
         <Rect ref={card2} position={[380, -130]} width={300} height={130} radius={16} fill={T.card} stroke={T.purple} lineWidth={3} opacity={0}>
           <Txt position={[0, -38]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'索引：按名字查'} />
           <Txt position={[0, 0]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'伦敦 → 第 1 行'} />
+          {/* r5：旧金山条目（P2-4：一个名字可以指多行），a23d 才出现 */}
+          {/* r6：第四行的名字也是旧金山（P2-5），条目改成第 2、3、4 行 */}
+          <Txt ref={card2Line2} position={[0, 36]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.mono} text={'旧金山 → 第 2、3、4 行'} opacity={0} />
         </Rect>
         <Line ref={arrow1} points={[[225, 0], [10, 0]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
         <Line ref={arrow2} points={[[225, -130], [10, -120]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
         <Txt ref={signTag} position={[380, -210]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.sans} text={'路标'} opacity={0} />
+        {/* r6：a19 第四行 JSON 通条（P2-3），文件下方亮出，a19b 起收掉 */}
+        <Rect ref={row4json} position={[0, 185]} width={1060} height={52} radius={12} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt fontSize={19} fill={T.text} fontFamily={FONT.mono} text={"42,{\"name\":\"San Francisco\",\"attractions\":[\"Fisherman's Wharf\"]}"} />
+        </Rect>
+        <Txt ref={staleTag} position={[380, 88]} fontSize={SIZE.label} fill={T.yellow} fontFamily={FONT.sans} text={'还没更新'} opacity={0} />
         <Txt ref={sameTag} position={[0, 170]} fontSize={SIZE.body} fontWeight={700} fill={T.green} fontFamily={FONT.sans} text={'内容不变'} opacity={0} />
+        <Circle ref={dot} position={[225, 0]} width={22} height={22} fill={T.yellow} opacity={0} />
+        <Txt ref={jumpTag} position={[0, 230]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'跳 1 次'} opacity={0} />
       </Node>
 
-      {/* 两条写路径 */}
-      <Node ref={paths} opacity={0}>
-        <Rect ref={pathA} position={[0, -150]} width={700} height={100} radius={16} fill={T.card} stroke={T.green} lineWidth={3}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'只追加：一路直行'} />
-        </Rect>
-        <Rect ref={pathB} position={[0, 10]} width={700} height={100} radius={16} fill={T.card} stroke={T.red} lineWidth={3}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'写 + 更新索引：多拐一道弯'} />
-        </Rect>
-        <Rect ref={barA} position={[-300, -70]} offset={[-1, 0]} width={10} height={26} fill={T.green} opacity={0} />
-        <Rect ref={barB} position={[-300, 90]} offset={[-1, 0]} width={10} height={26} fill={T.red} opacity={0} />
-        <Txt ref={barALab} position={[340, -70]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'最快'} opacity={0} />
-        <Txt ref={barBLab} position={[190, 90]} fontSize={SIZE.label} fill={T.red} fontFamily={FONT.sans} text={'更慢'} opacity={0} />
-      </Node>
-
-      {/* 天平 */}
-      <Node ref={scale} opacity={0}>
-        <Rect ref={panRead} position={[-350, -150]} width={220} height={90} radius={16} fill={T.card} stroke={T.green} lineWidth={3}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.green} fontFamily={FONT.sans} text={'读快'} />
-        </Rect>
-        <Rect ref={panWrite} position={[350, 40]} width={220} height={90} radius={16} fill={T.card} stroke={T.red} lineWidth={3}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.red} fontFamily={FONT.sans} text={'写慢'} />
-        </Rect>
-        <Line ref={beam} points={[[-350, -105], [350, 85]]} stroke={T.line} lineWidth={4} />
-        <Txt ref={fulcrum} position={[0, 60]} fontSize={44} fill={T.muted} fontFamily={FONT.sans} text={'▲'} />
-      </Node>
-
-      {/* 手工选 */}
-      <Node ref={pick} opacity={0}>
-        <Rect ref={pickCard} position={[0, -180]} width={640} height={110} radius={16} fill={T.card} stroke={T.blue} lineWidth={3}>
-          <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'手工选：按查询模式挑'} />
-        </Rect>
-        {[0, 1, 2].map(i => (
-          <Rect
-            key={`pat-${i}`}
-            ref={patCards[i]}
-            position={[-400 + i * 400, -20]}
-            width={340}
-            height={150}
-            radius={16}
-            fill={T.card}
-            stroke={T.line}
-            lineWidth={2}
-            opacity={0}
-          >
-            <Txt fontSize={SIZE.body} fill={T.text} fontFamily={FONT.sans} text={['按用户查', '按时间查', '按地点查'][i]} />
-          </Rect>
-        ))}
-        <Txt ref={patTag} position={[-400, -130]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'收益最大'} opacity={0} />
-      </Node>
-
-      {/* 边界三问题 */}
-      <Node ref={issues} opacity={0}>
-        {[0, 1, 2].map(i => (
-          <Rect
-            key={`iss-${i}`}
-            ref={issueCards[i]}
-            position={[-400 + i * 400, -100]}
-            width={340}
-            height={130}
-            radius={16}
-            fill={T.card}
-            stroke={T.yellow}
-            lineWidth={2}
-            opacity={0}
-          >
-            <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={['并发控制', '回收磁盘空间', '写一半的记录'][i]} />
-          </Rect>
-        ))}
-        <Rect ref={logBar} position={[0, 60]} width={800} height={70} radius={12} fill={T.card} stroke={T.blue} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'追加写的日志'} />
-        </Rect>
-      </Node>
-
-      {/* log 两层意思 */}
-      <Node ref={logs} opacity={0}>
-        <Rect ref={appLog} position={[-300, -40]} width={480} height={240} radius={16} fill={T.card} stroke={T.blue} lineWidth={2}>
-          <Txt ref={appLogTitle} position={[0, -88]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'应用日志'} opacity={0} />
-          <Node ref={appLogLines} opacity={0}>
-            <Txt position={[0, -30]} fontSize={20} fill={T.text} fontFamily={FONT.mono} text={'正在启动……'} />
-            <Txt position={[0, 15]} fontSize={20} fill={T.text} fontFamily={FONT.mono} text={'收到请求……'} />
-            <Txt position={[0, 60]} fontSize={20} fill={T.text} fontFamily={FONT.mono} text={'写入完成……'} />
-          </Node>
-        </Rect>
-        <Rect ref={binLog} position={[300, -40]} width={480} height={240} radius={16} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt ref={binLogTitle} position={[0, -88]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'追加写序列'} opacity={0} />
-          <Node ref={binLogLines} opacity={0}>
-            <Txt position={[0, -30]} fontSize={20} fill={T.text} fontFamily={FONT.mono} text={'01001000 01100101'} />
-            <Txt position={[0, 15]} fontSize={20} fill={T.text} fontFamily={FONT.mono} text={'01101100 01101100'} />
-            <Txt position={[0, 60]} fontSize={20} fill={T.text} fontFamily={FONT.mono} text={'01101111 00100000'} />
-          </Node>
-        </Rect>
-        <Txt ref={notEq} position={[0, -40]} fontSize={56} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'≠'} opacity={0} />
-        <Txt ref={notEqTag} position={[0, 150]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'两个意思不一样'} opacity={0} />
-      </Node>
-
-      {/* 收尾：文件 + 路标 */}
-      <Node ref={fin} opacity={0}>
-        <Rect ref={finFile} position={[-280, -40]} width={560} height={200} radius={16} fill={T.card} stroke={T.line} lineWidth={2}>
-          <Txt position={[0, -78]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'数据文件'} />
-        </Rect>
-        <Txt ref={finRow1} position={[-280, -40]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'123456 → 伦敦'} opacity={0} />
-        <Txt ref={finRow2} position={[-280, 20]} fontSize={22} fill={T.text} fontFamily={FONT.mono} text={'42 → 探索馆'} opacity={0} />
-        <Rect ref={finCard} position={[380, -40]} width={300} height={130} radius={16} fill={T.card} stroke={T.yellow} lineWidth={3}>
-          <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'索引：路标'} />
-        </Rect>
-        <Line ref={finArrow} points={[[225, -40], [10, -20]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
-        <Circle ref={finDot} position={[-500, -40]} width={22} height={22} fill={T.yellow} opacity={0} />
-      </Node>
+      {/* 扫描线 */}
+      <Rect ref={scan} position={[-280, -170]} width={560} height={6} fill={T.yellow} opacity={0} />
     </>
   );
+  view.add(scanCounter.node);
 
   say('要找得快，加索引');
-  yield* beat('b13a',
+  yield* beat('a14',
     all(idx().opacity(1, 0.5), frow1().opacity(1, 0.4), frow2().opacity(1, 0.4), frow3().opacity(1, 0.4)),
     at('索引', card1Title().fill(T.yellow, 0.4)),
+    // r4：两种摆法轮流点亮——文件、路标（修 idle：原旁白加长后静止 7.0s）
+    at('文件是一种摆法', fileBox().stroke(T.blue, 0.4)),
+    at('路标是另一种', card1().stroke(T.yellow, 0.4)),
   );
 
   say('索引是路标');
-  yield* beat('b13b',
-    all(arrow1().opacity(1, 0.5), signTag().opacity(1, 0.4), idx().scale(1.02, beat.dur('b13b'))),
-    at('定位', all(arrow1().stroke(T.green, 0.4))),
-    at('数据还在原来的文件里', fileBox().stroke(T.green, 0.4)),
+  yield* beat('a15',
+    all(arrow1().opacity(1, 0.5), signTag().opacity(1, 0.4), idx().scale(1.02, beat.dur('a15'))),
+    at('路标', signTag().fill(T.yellow, 0.4)),
+    at('定位', all(arrow1().stroke(T.green, 0.4), fileBox().stroke(T.green, 0.4))),
+    // r5：前指——路标另外存着，放内存还是放磁盘看索引种类（P2-2；旁白加长后 a15 5.8s → 10.6s，跟旁白分步展开）
+    at('另外存着', signTag().scale(1.15, 0.4)),
+    at('放内存还是放磁盘', card1().stroke(T.purple, 0.4)),
+    at('后面会讲到', arrow1().stroke(T.yellow, 0.4)),
   );
 
-  say('几种查法，几个索引');
-  yield* beat('b14',
-    all(card2().opacity(1, 0.5)),
-    at('几种不同方式', arrow2().opacity(1, 0.5)),
+  say('没索引，扫 3 行');
+  yield* beat('a16',
+    all(card1().opacity(0.25, 0.5), scanCounter.node.opacity(1, 0.4), scan().opacity(1, 0.4), scan().position([-280, 90], 3.0)),
+    at('扫三行', chain(scanCounter.bump(), scanCounter.bump(), scanCounter.bump())),
   );
 
-  say('增删索引，内容不变');
-  yield* beat('b15',
-    all(chain(card1().opacity(0.25, 0.6), card1().opacity(1, 0.6)), chain(card2().opacity(0.25, 0.6), card2().opacity(1, 0.6))),
-    at('派生', arrow1().opacity(0.4, 0.4)),
-    at('不影响数据库的内容', all(sameTag().opacity(1, 0.4), arrow1().opacity(1, 0.4))),
+  say('键 → 行号');
+  yield* beat('a17a',
+    all(card1().opacity(1, 0.5), scan().opacity(0, 0.4)),
+    at('路标', card1().stroke(T.yellow, 0.4)),
+  );
+
+  say('123456 → 第 1 行，42 → 第 3 行');
+  yield* beat('a17b',
+    all(card1().stroke(T.blue, 0.4)),
+    at('一二三四五六', card1Line1().opacity(1, 0.4)),
+    at('四十二', card1Line2().opacity(1, 0.4)),
+    at('路标里四十二指第三行', all(arrow1().opacity(1, 0.4), hl3().opacity(1, 0.4))),
+    // r6：同一个键后读到的盖掉先读到的（P2-2）——路标行闪一下
+    at('盖掉先读到的', chain(card1Line2().scale(1.12, 0.25), card1Line2().scale(1, 0.25))),
+    // r4：为什么指第 3 行——箭头、行框先后变绿（修 idle：原旁白加长后静止 8.3s）
+    at('因为查四十二要的是最后一次出现', arrow1().stroke(T.green, 0.4)),
+    at('第三行就是最后一次', hl3().stroke(T.green, 0.4)),
+  );
+
+  say('直接跳到第 3 行');
+  yield* beat('a18',
+    all(dot().opacity(1, 0.4), scanCounter.node.opacity(0, 0.3), arrow1().opacity(0, 0.3)),
+    at('直接跳到第三行', chain(dot().position([10, 0], 0.9), hl3().opacity(1, 0.4))),
+    at('不用扫了', jumpTag().opacity(1, 0.4)),
+  );
+
+  say('文件追加第 4 行');
+  yield* beat('a19',
+    all(frow4().opacity(1, 0.4), fishNote().opacity(1, 0.4), dot().opacity(0, 0.3), hl3().opacity(0, 0.3), jumpTag().opacity(0, 0.3)),
+    // r5：旁白用“比如”点名新值（P2-1）——念到名字时新行变黄
+    at('渔人码头', frow4().fill(T.yellow, 0.4)),
+    // r6：第四行也是一份 JSON（P2-3）——念到时 JSON 通条亮出
+    at('也是一份 JSON', row4json().opacity(1, 0.4)),
+    at('第四行', card1Line2().fill(T.yellow, 0.4)),
+    at('还没更新', staleTag().opacity(1, 0.4)),
+  );
+
+  dot().position([225, 0]);
+  say('旧路标还指第 3 行');
+  yield* beat('a19b',
+    all(dot().opacity(1, 0.4), row4json().opacity(0, 0.4)),
+    at('走路标查四十二', chain(dot().position([10, 0], 0.9), hl3().opacity(1, 0.4))),
+    at('第三行', chain(jumpTag().text('走路标查 → 第 3 行', 0), jumpTag().opacity(1, 0.4))),
+    at('探索馆', hl3().stroke(T.green, 0.4)),
+    // r4：滞后定性——卡变黄、行框回黄、“还没更新”闪一下（修 idle：原旁白加长后静止 8.2s）
+    at('写完才算数', card1().stroke(T.yellow, 0.4)),
+    at('中间查到的还是旧值', hl3().stroke(T.yellow, 0.4)),
+    at('是这次写还没做完', staleTag().scale(1.15, 0.4)),
   );
 
   say('写数据，索引也得改');
-  yield* beat('b16',
-    all(frow4().opacity(1, 0.4)),
+  yield* beat('a20',
+    all(idx().scale(1.015, beat.dur('a20')), hl3().opacity(0, 0.3), dot().opacity(0, 0.3), jumpTag().opacity(0, 0.3), staleTag().opacity(0, 0.3)),
+    at('改指第四行', chain(card1Line2().opacity(0.2, 0.2), card1Line2().text('42 → 第 4 行', 0), card1Line2().opacity(1, 0.3), card1Line2().fill(T.text, 0.3))),
     at('每次写数据', frow4().fill(T.green, 0.4)),
-    at('跟着更新', all(card1Line2().opacity(1, 0.4), card1().stroke(T.yellow, 0.4))),
+    at('跟着更新', card1().stroke(T.yellow, 0.4)),
   );
 
-  say('追加最简单，也最快');
-  yield* beat('b17',
-    all(idx().opacity(0, 0.5), paths().opacity(1, 0.5)),
-    at('最简单的写操作', all(barA().opacity(1, 0.3), barA().width(600, 1.2), barALab().opacity(1, 0.4))),
-    at('拖慢写', all(barB().opacity(1, 0.3), barB().width(300, 1.2), barBLab().opacity(1, 0.4))),
+  say('删路标，内容不变');
+  yield* beat('a21',
+    all(card1().opacity(0, 0.6)),
+    at('删掉路标', signTag().opacity(0, 0.4)),
+    at('数据原样', all(sameTag().opacity(1, 0.4), fileBox().stroke(T.green, 0.4))),
   );
 
-  say('读快，写慢');
-  yield* beat('b18',
-    all(paths().opacity(0, 0.5), scale().opacity(1, 0.5)),
-    at('加速读查询', panRead().stroke(T.green, 0.4)),
-    at('拖慢写', panWrite().stroke(T.red, 0.4)),
+  say('又回到扫全文件');
+  scan().position([-280, -170]);
+  yield* beat('a22',
+    all(scan().opacity(1, 0.4), scan().position([-280, 90], 3.5), scanCounter.reset(0.3), scanCounter.node.opacity(1, 0.4)),
+    at('扫全文件', chain(scanCounter.bump(), scanCounter.bump(), scanCounter.bump(), scanCounter.bump())),
+    at('只影响查询的性能', sameTag().fill(T.green, 0.4)),
   );
 
-  say('默认不全索引');
-  yield* beat('b19a',
-    all(scale().opacity(0, 0.5), pick().opacity(1, 0.5)),
-    at('手工选', pickCard().stroke(T.yellow, 0.4)),
+  say('几种查法，几个索引');
+  yield* beat('a23',
+    all(card1().opacity(1, 0.5), card2().opacity(1, 0.5), scan().opacity(0, 0.4), scanCounter.node.opacity(0, 0.4), idx().scale(1.03, beat.dur('a23'))),
+    at('按键查', card1().stroke(T.blue, 0.4)),
+    at('按名字查', all(arrow2().opacity(1, 0.5), card2().stroke(T.purple, 0.4))),
   );
 
-  say('按查询模式挑');
-  yield* beat('b19b',
-    all(patCards[0]().opacity(1, 0.4), patCards[1]().opacity(1, 0.4), patCards[2]().opacity(1, 0.4)),
-    at('收益最大', all(patCards[0]().stroke(T.green, 0.4), patTag().opacity(1, 0.4))),
-    at('不必要开销', all(patCards[1]().opacity(0.4, 0.4), patCards[2]().opacity(0.4, 0.4))),
+  say('键就是名字');
+  yield* beat('a23b',
+    all(idx().scale(1.04, beat.dur('a23b'))),
+    at('键就是名字', card2().stroke(T.yellow, 0.4)),
   );
 
-  say('还有更多问题');
-  yield* beat('b20',
-    all(pick().opacity(0, 0.5), issues().opacity(1, 0.5), logBar().opacity(1, 0.4)),
-    at('并发控制', issueCards[0]().opacity(1, 0.4)),
-    at('回收磁盘空间', issueCards[1]().opacity(1, 0.4)),
-    at('写了一半的记录', issueCards[2]().opacity(1, 0.4)),
-    at('追加写的日志', logBar().stroke(T.yellow, 0.4)),
+  say('名字从值里读出来');
+  yield* beat('a23c',
+    all(idx().scale(1.05, beat.dur('a23c'))),
+    at('名字从值里读出来', all(card2().stroke(T.purple, 0.4), frow1().fill(T.yellow, 0.4))),
   );
 
-  say('应用日志：描述在发生什么');
-  yield* beat('b21',
-    all(issues().opacity(0, 0.5), logs().opacity(1, 0.5), appLogTitle().opacity(1, 0.4)),
-    at('应用日志', appLog().stroke(T.yellow, 0.4)),
-    at('描述正在发生什么', appLogLines().opacity(1, 0.5)),
-  );
-
-  say('追加写序列，可二进制');
-  yield* beat('b22',
-    all(binLog().opacity(1, 0.5), binLogTitle().opacity(1, 0.4)),
-    at('追加写的记录序列', binLogLines().opacity(1, 0.5)),
-    at('二进制', all(notEq().opacity(1, 0.4), notEqTag().opacity(1, 0.4))),
-  );
-
-  say('选索引，就是选权衡');
-  yield* beat('b23',
-    all(logs().opacity(0, 0.5), scale().opacity(1, 0.5)),
-    at('读快', panRead().stroke(T.green, 0.4)),
-    at('写慢', panWrite().stroke(T.red, 0.4)),
-  );
-
-  say('追加最快，找要路标');
-  yield* beat('b24',
-    all(scale().opacity(0, 0.5), fin().opacity(1, 0.5), finRow1().opacity(1, 0.4), finRow2().opacity(1, 0.4)),
-    at('从头扫', chain(finDot().opacity(1, 0.4), finDot().position([-500, 20], 1.0))),
-    at('路标', all(finArrow().opacity(1, 0.4), finCard().stroke(T.yellow, 0.4))),
+  say('一个名字可以指多行');
+  yield* beat('a23d',
+    all(idx().scale(1.06, beat.dur('a23d'))),
+    // r5：一个名字可以指多行（P2-4）——路标补旧金山条目，第 2、3 行变黄
+    // （a23c 合句录音 TTS 疑似多读，按 skill 规则拆拍为 a23c + a23d）
+    // r6：旧金山条目含第 4 行（P2-5），第 4 行同黄；按名字一查三行都返回（P2-4）
+    at('多行', all(card2Line2().opacity(1, 0.4), frow2().fill(T.yellow, 0.4), frow3().fill(T.yellow, 0.4), frow4().fill(T.yellow, 0.4))),
   );
 });

@@ -1,4 +1,4 @@
-// U2 场景 1（MC）：b1–b13 —— 钩子、键值背景、哈希索引、原图 3-1（字节格日志 + 哈希表）、
+// U2 场景 1（MC）：b0–b13 —— b0 单元站牌（UnitTitle：第 2 站），b1 钩子、键值背景、哈希索引、原图 3-1（字节格日志 + 哈希表）、
 // Bitcask、猫视频例子。分镜：skill-ch03/beats-u2.md；原文：DDIA §3.2（书页 p72–73，PDF p94–95）。
 // 原图 3-1 按处置“改编”：字节格 5 行 × 30 格、标尺 0/10/…/120、123456 → 0、42 → 64 均按原图重新生成。
 // 布局避让：箭头走左 margin、不穿格子文字；标尺数字与行间距留白；新记录牌在后续拍淡出。
@@ -6,16 +6,22 @@
 import {Circle, Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {UnitTitle} from '../../lib/opening';
+import {CHAPTER} from '../../lib/chapter';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u2.json';
 
-// 原图 3-1 的字节格（5 行，每行 30 格；第 3 行的换行按原图画成 \ n 两格）
-const ROWS = [
-  '123456,{"name":"London","attra',
-  'tions":["Big Ben","London Ey',
-  '"]}\\n42,{"name":"San Francisco"',
-  ',"attractions":["Golden Gate B',
-  'ridge"]}\\n',
+// 原图 3-1 的字节格（5 行，每行 30 格；换行只占一格，画成 "\n" 两字一格）。
+// 逐格核对过原图：行 1 字节 0–29、行 2 字节 30–59（以 c 开头、e 结尾）、行 3 字节 60–89
+// （" ] } \n 4 2 …，42 的记录从字节 64 开始）、行 4 字节 90–119、行 5 字节 120–128；
+// 文件共 129 字节（63+1+64+1），新记录写在字节 129。r4 修正：r3 把 \n 画成两格、
+// 行 2 漏了 c、e 两格，导致高亮落在 n 格上、129 写成 130。
+const ROWS: string[][] = [
+  [...'123456,{"name":"London","attra'],
+  [...'ctions":["Big Ben","London Eye'],
+  ['"', ']', '}', '\\n', '4', '2', ',', '{', '"', 'n', 'a', 'm', 'e', '"', ':', '"', 'S', 'a', 'n', ' ', 'F', 'r', 'a', 'n', 'c', 'i', 's', 'c', 'o', '"'],
+  [...',"attractions":["Golden Gate B'],
+  ['r', 'i', 'd', 'g', 'e', '"', ']', '}', '\\n'],
 ];
 const ROW_Y = [-148, -104, -60, -16, 28];
 const CELL_W = 36;
@@ -32,7 +38,10 @@ export default makeScene2D(function* (view) {
   view.fill(T.bg);
   const beat = makeBeats(timeline);
 
-  const header = createRef<Txt>();
+  // 单元站牌（b0）：这一站在全章的位置 + 单元标题；b1 开头收成左上角页眉。
+  // 页眉与场景原有的左上角标题同一位置同一样式，旧 header 已删，改由 unit.header 承担。
+  const unit = new UnitTitle(CHAPTER, 'u2');
+
   const anchor = createRef<Txt>();
   const say = (text: string) => anchor().text(text);
 
@@ -66,6 +75,11 @@ export default makeScene2D(function* (view) {
   const hl0 = createRef<Rect>();
   const hl64 = createRef<Rect>();
   const newChip = createRef<Rect>();
+  const oldLab = createRef<Txt>();
+  const flipCard = createRef<Node>();
+  const flipOld = createRef<Txt>();
+  const flipArrow = createRef<Txt>();
+  const flipNew = createRef<Txt>();
   const valChip = createRef<Rect>();
   const b6dot = createRef<Circle>();
 
@@ -80,6 +94,7 @@ export default makeScene2D(function* (view) {
   const g11seek = createRef<Line>();
   const g11cache = createRef<Txt>();
   const g11zero = createRef<Txt>();
+  const cacheDef = createRef<Txt>();
   const g12 = createRef<Node>();
   const catCards = [0, 1, 2, 3].map(() => createRef<Rect>());
   const catCounts = [0, 1, 2, 3].map(() => createRef<Txt>());
@@ -87,18 +102,11 @@ export default makeScene2D(function* (view) {
   const catVals = ['1078', '2103', '511', '252'];
   const g13 = createRef<Node>();
   const g13lab = createRef<Txt>();
+  const bridgeLab = createRef<Txt>();
 
   view.add(
     <>
-      <Txt
-        ref={header}
-        position={[-SAFE.halfW, -SAFE.halfH]}
-        offset={[-1, -1]}
-        fontSize={SIZE.label}
-        fill={T.muted}
-        fontFamily={FONT.sans}
-        text={'哈希索引：键就是地址'}
-      />
+      {unit.nodes()}
       <Txt
         ref={anchor}
         position={[0, 280]}
@@ -166,11 +174,11 @@ export default makeScene2D(function* (view) {
         </Rect>
         <Node ref={tabRow3} opacity={0}>
           <Txt position={[-110, -172]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'999'} />
-          <Txt position={[110, -172]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'130'} />
+          <Txt position={[110, -172]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'129'} />
         </Node>
-        {ROWS.map((rowStr, r) => (
+        {ROWS.map((cells, r) => (
           <Node key={`grid-${r}`} ref={gridRows[r]} opacity={0}>
-            {rowStr.split('').map((ch, i) => (
+            {cells.map((ch, i) => (
               <Rect
                 key={`c-${r}-${i}`}
                 position={[cellX(i), ROW_Y[r]]}
@@ -206,7 +214,7 @@ export default makeScene2D(function* (view) {
         />
         <Line
           ref={arrow64}
-          points={[[100, -185], [-560, -185], [-560, -60], [-545, -60]]}
+          points={[[100, -185], [-378, -185], [-378, -80]]}
           stroke={T.yellow}
           lineWidth={3}
           endArrow
@@ -215,8 +223,20 @@ export default makeScene2D(function* (view) {
         <Rect ref={hl0} position={[cellX(0), ROW_Y[0]]} width={CELL_W + 2} height={CELL_H + 2} stroke={T.yellow} lineWidth={3} opacity={0} />
         <Rect ref={hl64} position={[cellX(4), ROW_Y[2]]} width={CELL_W + 2} height={CELL_H + 2} stroke={T.yellow} lineWidth={3} opacity={0} />
         <Rect ref={newChip} position={[0, 110]} width={420} height={54} radius={12} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
-          <Txt fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'999, 新记录 → 字节 130'} />
+          <Txt fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'999, 新记录 → 字节 129'} />
         </Rect>
+        <Txt ref={oldLab} position={[0, 170]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'旧值还留在文件里，等压缩再清'} opacity={0} />
+        {/* b7 改旧键是另一例：小卡片“另一例：改旧键 42”——42 的偏移 64 翻成 129（64 变灰）；
+            主表保持 42 → 64 不动，下一拍 b8 查 42 仍跳字节 64；翻转借用同一条追加记录的位置 129 作示意；
+            下方小字“旧值还留在文件里，等压缩再清”只属于改旧键这一例，b8 开头淡出 */}
+        <Node ref={flipCard} opacity={0}>
+          <Rect position={[400, 110]} width={340} height={100} radius={14} fill={T.card} stroke={T.yellow} lineWidth={2}>
+            <Txt position={[0, -28]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'另一例：改旧键 42'} />
+            <Txt ref={flipOld} position={[-70, 18]} fontSize={SIZE.title} fontWeight={700} fill={T.text} fontFamily={FONT.mono} text={'64'} />
+            <Txt ref={flipArrow} position={[0, 18]} fontSize={SIZE.title} fontWeight={700} fill={T.text} fontFamily={FONT.mono} text={'→'} opacity={0} />
+            <Txt ref={flipNew} position={[75, 18]} fontSize={SIZE.title} fontWeight={700} fill={T.green} fontFamily={FONT.mono} text={'129'} opacity={0} />
+          </Rect>
+        </Node>
         <Rect ref={valChip} position={[410, -230]} width={330} height={90} radius={14} fill={T.card} stroke={T.yellow} lineWidth={2} opacity={0}>
           <Txt fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'旧金山的记录'} />
         </Rect>
@@ -257,7 +277,8 @@ export default makeScene2D(function* (view) {
         <Line ref={g11seek} points={[[-200, -185], [-560, -185], [-560, -60]]} stroke={T.blue} lineWidth={3} opacity={0} />
         <Circle ref={g11dot} position={[-200, -185]} width={26} height={26} fill={T.blue} opacity={0} />
         <Txt ref={g11cache} position={[0, 150]} fontSize={SIZE.body} fontWeight={700} fill={T.green} fontFamily={FONT.sans} text={'在缓存里'} opacity={0} />
-        <Txt ref={g11zero} position={[0, 210]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'读，连一次磁盘读写都不用'} opacity={0} />
+        <Txt ref={g11zero} position={[0, 210]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'磁盘读写一次都不用'} opacity={0} />
+        <Txt ref={cacheDef} position={[0, 240]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'缓存：操作系统留在内存里的文件内容'} opacity={0} />
       </Node>
 
       {/* b12/b13：猫视频计数 */}
@@ -284,11 +305,16 @@ export default makeScene2D(function* (view) {
       <Node ref={g13} opacity={0}>
         <Txt ref={g13lab} position={[0, 130]} fontSize={SIZE.body} fontWeight={700} fill={T.green} fontFamily={FONT.sans} text={'写很多，键只有 4 个'} opacity={0} />
       </Node>
+      <Txt ref={bridgeLab} position={[0, 200]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'mew 这些名字，就是视频的标识'} opacity={0} />
     </>
   );
 
+  // b0：单元站牌（演示拍，念完留 0.8s）
+  yield* beat('b0', unit.enter());
+
   say('不用扫全文件？');
   yield* beat('b1',
+    unit.toHeader(),
     all(g1().opacity(1, 0.5)),
     chain(g1dot().position([480, -60], 1.8), g1q().opacity(1, 0.4)),
   );
@@ -336,22 +362,30 @@ export default makeScene2D(function* (view) {
     all(rulers().opacity(1, 0.6)),
   );
 
-  say('123456 → 0，42 → 64');
+  say('123456 → 0，42 → 64 · 偏移指记录开头');
   yield* beat('b6',
-    at('一二三四五六', all(arrow0().opacity(1, 0.5), hl0().opacity(1, 0.4))),
+    all(fig().scale(1.02, beat.dur('b6'))),
+    at('一二三四五六', all(arrow0().opacity(1, 0.5), hl0().opacity(1, 0.4), ...gridRows.map(r => r().opacity(0.25, 0.5)))),
     at('四十二', all(arrow64().opacity(1, 0.5), hl64().opacity(1, 0.4))),
+    at('值就写在记录里', chain(hl64().scale(1.08, 0.8), hl64().scale(1, 0.8))),
     at('箭头从表里指向', chain(b6dot().opacity(1, 0.4), b6dot().position([-522, -165], 2.0))),
   );
 
   say('追加写，顺手改表');
   yield* beat('b7',
+    all(...gridRows.map(r => r().opacity(1, 0.5)), fig().scale(1.04, beat.dur('b7'))),
     at('追加', newChip().opacity(1, 0.5)),
     at('改成刚写下的位置', tabRow3().opacity(1, 0.5)),
-    at('新键、改旧键', newChip().position([0, 100], 1.2)),
+    at('表里新添一行', newChip().position([0, 100], 1.2)),
+    at('另一例，改旧键', flipCard().opacity(1, 0.5)),
+    at('翻成一百二十九', chain(flipOld().fill(T.muted, 0.4), flipArrow().opacity(1, 0.4), flipNew().opacity(1, 0.4))),
+    at('旧值还留在文件里', oldLab().opacity(1, 0.5)),
+    at('等压缩时再清掉', oldLab().scale(1.06, 0.8)),
   );
 
   say('查表 → 跳过去 → 读值');
   yield* beat('b8',
+    all(flipCard().opacity(0, 0.4), oldLab().opacity(0, 0.4)),
     at('表里找到偏移', all(tabRow2K().fill(T.yellow, 0.4), tabRow2V().fill(T.yellow, 0.4))),
     at('跳到那个位置', all(hl64().lineWidth(5, 0.4), valChip().opacity(1, 0.5))),
     at('读出来', valChip().stroke(T.green, 0.4)),
@@ -359,7 +393,7 @@ export default makeScene2D(function* (view) {
 
   say('Bitcask 用的就是它');
   yield* beat('b9',
-    all(g9().opacity(1, 0.5), valChip().opacity(0, 0.4), arrow0().opacity(0, 0.4), arrow64().opacity(0, 0.4), hl0().opacity(0, 0.4), hl64().opacity(0, 0.4)),
+    all(g9().opacity(1, 0.5), valChip().opacity(0, 0.4), oldLab().opacity(0, 0.4), arrow0().opacity(0, 0.4), arrow64().opacity(0, 0.4), hl0().opacity(0, 0.4), hl64().opacity(0, 0.4)),
     at('Riak', g9lab().opacity(1, 0.5)),
   );
 
@@ -374,12 +408,13 @@ export default makeScene2D(function* (view) {
     all(g9().opacity(0, 0.4), g10vals[0]().opacity(0.35, 0.5), g10vals[1]().opacity(0.35, 0.5), g10vals[2]().opacity(0.35, 0.5)),
   );
 
-  say('一次定位，缓存里零次');
+  say('在缓存里：零次；不在：一次定位');
   yield* beat('b11',
-    all(g10().opacity(0, 0.5), g11().opacity(1, 0.5)),
-    at('一次磁盘定位', chain(g11seek().opacity(1, 0.5), g11dot().opacity(1, 0.4), g11dot().position([-560, -185], 1.2), g11dot().position([-560, -60], 1.6))),
-    at('缓存', all(g11dot().fill(T.green, 0.4), g11cache().opacity(1, 0.5))),
-    at('磁盘读写', g11zero().opacity(1, 0.5)),
+    all(g10().opacity(0, 0.5), g11().opacity(1, 0.5), g11().scale(1.02, beat.dur('b11'))),
+    at('关键先看要读的那部分', g11dot().opacity(1, 0.4)),
+    at('在缓存里磁盘读写一次都不用', all(g11dot().fill(T.green, 0.4), g11cache().opacity(1, 0.5), g11zero().opacity(1, 0.5))),
+    at('不在缓存里，就一次磁盘定位', chain(g11dot().fill(T.blue, 0.4), g11seek().opacity(1, 0.5), g11dot().position([-560, -185], 1.2), g11dot().position([-560, -60], 1.6))),
+    at('缓存就是操作系统', chain(cacheDef().opacity(1, 0.5), g11dot().scale(1.18, 1.4), g11dot().scale(1, 1.4), g11dot().scale(1.18, 1.4), g11dot().scale(1, 1.4), g11dot().scale(1.18, 1.4), g11dot().scale(1, 1.4))),
   );
 
   say('键是视频，值是次数');
@@ -387,6 +422,7 @@ export default makeScene2D(function* (view) {
     all(g11().opacity(0, 0.5), fig().opacity(0, 0.5), g12().opacity(1, 0.5)),
     at('猫视频', chain(catCards[0]().opacity(1, 0.4), catCards[1]().opacity(1, 0.4), catCards[2]().opacity(1, 0.4), catCards[3]().opacity(1, 0.4))),
     at('播放次数', chain(catCounts[0]().opacity(1, 0.4), catCounts[1]().opacity(1, 0.4), catCounts[2]().opacity(1, 0.4), catCounts[3]().opacity(1, 0.4))),
+    at('mew 这些名字', bridgeLab().opacity(1, 0.5)),
   );
 
   say('写多，键少');

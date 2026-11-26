@@ -1,9 +1,11 @@
-// U14 场景 3（MC）：b19–b24 —— 五维超立方体、查总数不用扫数百万行、价格不是维度、保留原始数据、回扣。
+// U14 场景 3（MC，r3）：n23–n29 —— 五维超立方体、查总数不用扫数百万行、价格不是维度、保留原始数据、回扣。
 // 分镜：skill-ch03/beats-u14.md；原文：DDIA §3.14（书页 p102–103，PDF p124–125）。
+// r3 改动：拍号改用设计的 n 拍号；n23/n24 拆拍，n24 加计数器（只查 1 格）；n25 旁白去掉“图里”指代（r2 P2 #1）。
 // 时长全部来自 timeline/u14.json（beat() 驱动），不手写 waitFor。
 import {Line, Node, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
 import {all, chain, createRef} from '@motion-canvas/core';
 import {at, makeBeats} from '../../lib/beats';
+import {Counter} from '../../lib/schemas';
 import {FONT, SAFE, SIZE, T} from '../../lib/theme';
 import timeline from '../../timeline/u14.json';
 
@@ -17,35 +19,36 @@ export default makeScene2D(function* (view) {
   const anchor = createRef<Txt>();
   const say = (text: string) => anchor().text(text);
 
-  // ---- b19：五个维度 → 超立方体 ----
+  // ---- n25：五个维度 → 超立方体 ----
   const g19 = createRef<Node>();
   const dimChips = DIMS.map(() => createRef<Rect>());
   const cubeNode = createRef<Rect>();
 
-  // ---- b20：一格 + 五个方向汇总 ----
+  // ---- n26：一格 + 五个方向汇总 ----
   const g20 = createRef<Node>();
   const centerCell = createRef<Rect>();
   const sumArrows = [0, 1, 2, 3, 4].map(() => createRef<Line>());
   const sumLabs = DIMS.map(() => createRef<Txt>());
 
-  // ---- b21：查总数不用扫数百万行 ----
+  // ---- n23/n24：查总数不用扫数百万行 ----
   const g21 = createRef<Node>();
   const rowsNode = createRef<Node>();
   const totalCard = createRef<Rect>();
+  const scanCounter = new Counter([330, 90], '只查 ', ' 格');
 
-  // ---- b22：价格不是维度 ----
+  // ---- n27：价格不是维度 ----
   const g22 = createRef<Node>();
   const priceCard = createRef<Rect>();
   const cross1 = createRef<Line>();
   const cross2 = createRef<Line>();
   const priceTag = createRef<Txt>();
 
-  // ---- b23：保留原始数据 ----
+  // ---- n28：保留原始数据 ----
   const g23 = createRef<Node>();
   const rawBox = createRef<Rect>();
   const miniCube = createRef<Rect>();
 
-  // ---- b24：回扣 ----
+  // ---- n29：回扣 ----
   const g24 = createRef<Node>();
   const leftCard = createRef<Rect>();
   const rightCard = createRef<Rect>();
@@ -74,7 +77,7 @@ export default makeScene2D(function* (view) {
         text={''}
       />
 
-      {/* b19 */}
+      {/* n25 */}
       <Node ref={g19} opacity={0}>
         {DIMS.map((d, i) => (
           <Rect
@@ -98,7 +101,7 @@ export default makeScene2D(function* (view) {
         </Rect>
       </Node>
 
-      {/* b20 */}
+      {/* n26 */}
       <Node ref={g20} opacity={0}>
         <Rect ref={centerCell} position={[0, -60]} width={130} height={90} radius={12} fill={T.card} stroke={T.yellow} lineWidth={3} opacity={0}>
           <Txt fontSize={SIZE.label} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'一格'} />
@@ -115,7 +118,7 @@ export default makeScene2D(function* (view) {
         <Txt ref={sumLabs[4]} position={[140, -188]} fontSize={SIZE.label} fill={T.text} fontFamily={FONT.sans} text={'顾客'} opacity={0} />
       </Node>
 
-      {/* b21 */}
+      {/* n23/n24 */}
       <Node ref={g21} opacity={0}>
         <Node ref={rowsNode}>
           {[0, 1, 2, 3, 4].map(i => (
@@ -137,8 +140,9 @@ export default makeScene2D(function* (view) {
           <Txt position={[0, 30]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'昨天每家店的总销售额'} />
         </Rect>
       </Node>
+      {scanCounter.node}
 
-      {/* b22 */}
+      {/* n27 */}
       <Node ref={g22} opacity={0}>
         <Rect ref={priceCard} position={[-160, -60]} width={480} height={130} radius={16} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
           <Txt fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'价格超过一百美元'} />
@@ -148,7 +152,7 @@ export default makeScene2D(function* (view) {
         <Txt ref={priceTag} position={[0, 80]} fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'价格不是维度'} opacity={0} />
       </Node>
 
-      {/* b23 */}
+      {/* n28 */}
       <Node ref={g23} opacity={0}>
         <Rect ref={rawBox} position={[-140, -60]} width={560} height={180} radius={18} fill={T.card} stroke={T.line} lineWidth={2} opacity={0}>
           <Txt position={[0, -30]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'原始数据'} />
@@ -160,7 +164,7 @@ export default makeScene2D(function* (view) {
         </Rect>
       </Node>
 
-      {/* b24 */}
+      {/* n29 */}
       <Node ref={g24} opacity={0}>
         <Rect ref={leftCard} position={[-280, -60]} width={420} height={140} radius={16} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
           <Txt position={[0, -28]} fontSize={SIZE.body} fontWeight={700} fill={T.text} fontFamily={FONT.sans} text={'算好的总数'} />
@@ -175,9 +179,22 @@ export default makeScene2D(function* (view) {
     </>
   );
 
+  say('某些查询变得非常快');
+  yield* beat('n23',
+    all(g20().opacity(0, 0.5), g21().opacity(1, 0.5), totalCard().opacity(1, 0.5)),
+    at('变得非常快', totalCard().stroke(T.yellow, 0.4)),
+  );
+
+  say('查总数，不用扫数百万行');
+  yield* beat('n24',
+    at('昨天每家店的总销售额', totalCard().scale(1.05, 0.8)),
+    at('直接看总计就行', chain(scanCounter.node.opacity(1, 0.3), scanCounter.bump())),
+    at('不用扫数百万行', rowsNode().opacity(0.15, 1.0)),
+  );
+
   say('五个维度，原理相同');
-  yield* beat('b19',
-    all(g19().opacity(1, 0.5)),
+  yield* beat('n25',
+    all(g21().opacity(0, 0.5), g19().opacity(1, 0.5), scanCounter.node.opacity(0, 0.4)),
     at('日期', dimChips[0]().opacity(1, 0.5)),
     at('产品', dimChips[1]().opacity(1, 0.5)),
     at('商店', dimChips[2]().opacity(1, 0.5)),
@@ -188,7 +205,7 @@ export default makeScene2D(function* (view) {
   );
 
   say('每格是一个组合的销售额');
-  yield* beat('b20',
+  yield* beat('n26',
     all(g19().opacity(0, 0.5), g20().opacity(1, 0.5)),
     at('某一个日期、产品、商店、促销、顾客组合', centerCell().opacity(1, 0.5)),
     at('沿着每个维度反复汇总', chain(
@@ -200,30 +217,22 @@ export default makeScene2D(function* (view) {
     )),
   );
 
-  say('查总数，不用扫数百万行');
-  yield* beat('b21',
-    all(g20().opacity(0, 0.5), g21().opacity(1, 0.5), totalCard().opacity(1, 0.5)),
-    at('昨天每家店的总销售额', totalCard().stroke(T.yellow, 0.4)),
-    at('直接看总计就行', totalCard().scale(1.05, 0.8)),
-    at('不用扫数百万行', rowsNode().opacity(0.15, 1.0)),
-  );
-
   say('价格不是维度，算不出来');
-  yield* beat('b22',
-    all(g21().opacity(0, 0.5), g22().opacity(1, 0.5), priceCard().opacity(1, 0.5)),
+  yield* beat('n27',
+    all(g20().opacity(0, 0.5), g22().opacity(1, 0.5), priceCard().opacity(1, 0.5)),
     at('价格不是维度', priceTag().opacity(1, 0.5)),
     at('超过一百美元', all(cross1().opacity(1, 0.4), cross2().opacity(1, 0.4))),
   );
 
   say('保留原始数据');
-  yield* beat('b23',
+  yield* beat('n28',
     all(g22().opacity(0, 0.5), g23().opacity(1, 0.5), rawBox().opacity(1, 0.5)),
     at('保留原始数据', rawBox().stroke(T.green, 0.4)),
     at('性能提升', miniCube().opacity(1, 0.5)),
   );
 
   say('只限于事先想好的问题');
-  yield* beat('b24',
+  yield* beat('n29',
     all(g23().opacity(0, 0.5), g24().opacity(1, 0.5)),
     at('算好的总数', leftCard().opacity(1, 0.5)),
     at('事先想好的那些问题', all(rightCard().opacity(1, 0.5), recapArrow().opacity(1, 0.4))),

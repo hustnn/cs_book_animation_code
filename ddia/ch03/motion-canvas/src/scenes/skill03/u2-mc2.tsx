@@ -40,6 +40,13 @@ export default makeScene2D(function* (view) {
   const cells1 = SEG1.map(() => createRef<Rect>());
   const compBox = createRef<Rect>();
   const compLab = createRef<Txt>();
+  // B5 tally：b17 每格落下时角落同步累计各键最新值（顺序不重要，见 tally 标题）
+  const tally1 = createRef<Node>();
+  const tally1Vals = [0, 1, 2].map(() => createRef<Txt>());
+  const compTabTag = createRef<Txt>();
+  const sizeLab = createRef<Txt>();
+  const cellDef = createRef<Txt>();
+  const noBytesLab = createRef<Txt>();
 
   // ---- 第 2 页：合并（原图 3-3）----
   const p2 = createRef<Node>();
@@ -48,6 +55,12 @@ export default makeScene2D(function* (view) {
   const mergeSym = createRef<Txt>();
   const mergeBox = createRef<Rect>();
   const mergeLab = createRef<Txt>();
+  // B5 tally：b20 每格落下时角落同步累计各键最新值
+  const tally2 = createRef<Node>();
+  const tally2Vals = [0, 1, 2, 3].map(() => createRef<Txt>());
+  const mergeTabTag = createRef<Txt>();
+  const segLabA = createRef<Txt>();
+  const segLabB = createRef<Txt>();
 
   // ---- 第 3 页：后台合并 + 逐段查 ----
   const p3 = createRef<Node>();
@@ -57,6 +70,8 @@ export default makeScene2D(function* (view) {
   const newSeg = createRef<Rect>();
   const rwArrow = createRef<Line>();
   const switchArrow = createRef<Line>();
+  const readArrow2 = createRef<Line>();
+  const writeChip = createRef<Rect>();
   const lookSegs = [0, 1, 2].map(() => createRef<Rect>());
   const lookTabs = [0, 1, 2].map(() => createRef<Txt>());
   const lookDot = createRef<Circle>();
@@ -128,6 +143,19 @@ export default makeScene2D(function* (view) {
         <Txt ref={funnelLab} position={[0, 20]} fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'压缩'} opacity={0} />
         <Rect ref={compBox} position={[0, 30]} width={1080} height={80} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0} />
         <Txt ref={compLab} position={[-490, 30]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'压缩段'} opacity={0} />
+        <Txt ref={compTabTag} position={[480, 30]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'新段的新表'} opacity={0} />
+        <Txt ref={sizeLab} position={[0, 110]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'大小自己定，写到就封起来'} opacity={0} />
+        {/* b16：段演示里的格子一格是一条记录，不是 b5c 的字节格；b17：演示只画格子，不画具体字节数 */}
+        <Txt ref={cellDef} position={[0, -262]} fontSize={SIZE.body} fontWeight={700} fill={T.yellow} fontFamily={FONT.sans} text={'一格 = 一条记录，不是字节格'} opacity={0} />
+        <Txt ref={noBytesLab} position={[0, 210]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'只画格子，不画字节数'} opacity={0} />
+        <Node ref={tally1} opacity={0}>
+          <Rect position={[0, 140]} width={1120} height={64} radius={12} fill={T.card} stroke={T.line} lineWidth={2}>
+            <Txt position={[-480, 0]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'最新值：'} />
+            <Txt ref={tally1Vals[0]} position={[-260, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'yawn: 511'} opacity={0} />
+            <Txt ref={tally1Vals[1]} position={[-20, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'purr: 2108'} opacity={0} />
+            <Txt ref={tally1Vals[2]} position={[220, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'mew: 1082'} opacity={0} />
+          </Rect>
+        </Node>
         {SEG1.map((v, i) => (
           <Rect
             key={`c1-${i}`}
@@ -148,8 +176,20 @@ export default makeScene2D(function* (view) {
 
       {/* 第 2 页 */}
       <Node ref={p2} opacity={0}>
+        <Txt ref={segLabA} position={[-520, -190]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'段 1：先写'} opacity={0} />
+        <Txt ref={segLabB} position={[-520, -60]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'段 2：后写'} opacity={0} />
         <Rect ref={mergeBox} position={[0, 70]} width={1080} height={70} radius={14} fill={T.card} stroke={T.green} lineWidth={2} opacity={0} />
         <Txt ref={mergeLab} position={[-490, 70]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'合并段'} opacity={0} />
+        <Txt ref={mergeTabTag} position={[450, 70]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'新段的新表'} opacity={0} />
+        <Node ref={tally2} opacity={0}>
+          <Rect position={[0, 150]} width={1120} height={64} radius={12} fill={T.card} stroke={T.line} lineWidth={2}>
+            <Txt position={[-480, 0]} fontSize={SIZE.label} fill={T.muted} fontFamily={FONT.sans} text={'最新值：'} />
+            <Txt ref={tally2Vals[0]} position={[-330, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'yawn: 511'} opacity={0} />
+            <Txt ref={tally2Vals[1]} position={[-130, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'scratch: 252'} opacity={0} />
+            <Txt ref={tally2Vals[2]} position={[70, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'mew: 1087'} opacity={0} />
+            <Txt ref={tally2Vals[3]} position={[270, 0]} fontSize={SIZE.label} fill={T.green} fontFamily={FONT.mono} text={'purr: 2114'} opacity={0} />
+          </Rect>
+        </Node>
         {SEG1.map((v, i) => (
           <Rect
             key={`cA-${i}`}
@@ -211,7 +251,11 @@ export default makeScene2D(function* (view) {
           <Txt fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'新段'} />
         </Rect>
         <Line ref={rwArrow} points={[[-480, -200], [-280, -200]]} stroke={T.blue} lineWidth={3} endArrow opacity={0} />
-        <Line ref={switchArrow} points={[[280, 90], [280, -40]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
+        <Line ref={switchArrow} points={[[200, -85], [200, 55]]} stroke={T.yellow} lineWidth={3} endArrow opacity={0} />
+        <Line ref={readArrow2} points={[[-480, 90], [-240, 90]]} stroke={T.blue} lineWidth={3} endArrow opacity={0} />
+        <Rect ref={writeChip} position={[0, 190]} width={560} height={54} radius={12} fill={T.card} stroke={T.green} lineWidth={2} opacity={0}>
+          <Txt fontSize={SIZE.label} fill={T.green} fontFamily={FONT.sans} text={'新写入 → 正在写的段，不参与合并'} />
+        </Rect>
         {[0, 1, 2].map(i => (
           <Rect
             key={`look-${i}`}
@@ -245,30 +289,38 @@ export default makeScene2D(function* (view) {
   yield* beat('b14b',
     all(logBar().opacity(0, 0.4)),
     at('切成一段一段', chain(segs[0]().opacity(1, 0.4), segs[1]().opacity(1, 0.4), segs[2]().opacity(1, 0.4))),
+    at('一段多大可以自己定', sizeLab().opacity(1, 0.5)),
   );
 
   say('只留最新值');
   yield* beat('b15',
-    all(segs[0]().opacity(0, 0.4), segs[1]().opacity(0, 0.4), segs[2]().opacity(0, 0.4), diskBar().opacity(0, 0.4), diskFill().opacity(0, 0.4)),
+    all(segs[0]().opacity(0, 0.4), segs[1]().opacity(0, 0.4), segs[2]().opacity(0, 0.4), diskBar().opacity(0, 0.4), diskFill().opacity(0, 0.4), sizeLab().opacity(0, 0.4)),
     at('压缩', chain(funnel().opacity(1, 0.5), funnelLab().opacity(1, 0.5), funnel().position([0, -45], 2.5))),
   );
 
   say('12 格 → 3 格');
   yield* beat('b16',
-    all(funnel().opacity(0, 0.4), funnelLab().opacity(0, 0.4)),
+    all(funnel().opacity(0, 0.4), funnelLab().opacity(0, 0.4), p1().scale(1.02, beat.dur('b16'))),
     at('十二格', chain(...cells1.map(c => c().opacity(1, 0.35)))),
+    at('这里的一格是一条记录', cellDef().opacity(1, 0.5)),
+    at('越靠后越新', chain(...cells1.map(c => chain(c().stroke(T.yellow, 0.15), c().stroke(T.blue, 0.15))))),
   );
 
-  say('yawn:511、mew:1082、purr:2108');
+  say('yawn:511、mew:1082、purr:2108 · 顺序不重要');
   yield* beat('b17',
-    all(compBox().opacity(1, 0.5), compLab().opacity(1, 0.4)),
+    all(compBox().opacity(1, 0.5), compLab().opacity(1, 0.4), tally1().opacity(1, 0.5)),
     at('压成三格', chain(
       all(...cells1.filter((_, i) => !KEEP1.includes(i)).map(c => c().opacity(0.2, 0.6))),
       cells1[9]().position([-340, 30], 1.0),
+      tally1Vals[0]().opacity(1, 0.4),
       cells1[10]().position([0, 30], 1.0),
+      tally1Vals[1]().opacity(1, 0.4),
       cells1[11]().position([340, 30], 1.0),
+      tally1Vals[2]().opacity(1, 0.4),
     )),
     at('各留最后一次', chain(compBox().stroke(T.yellow, 0.4), compBox().stroke(T.green, 1.0))),
+    at('新段有自己的新表', compTabTag().opacity(1, 0.5)),
+    at('这里只画格子', noBytesLab().opacity(1, 0.5)),
   );
 
   say('边压缩，边合并');
@@ -280,24 +332,31 @@ export default makeScene2D(function* (view) {
 
   say('24 格 → 4 格');
   yield* beat('b19',
+    all(segLabA().opacity(1, 0.5), segLabB().opacity(1, 0.5)),
     at('二十四格', chain(...cellsB.map(c => c().opacity(1, 0.3)))),
     at('四格', all(mergeBox().opacity(1, 0.5), mergeLab().opacity(1, 0.4))),
   );
 
-  say('yawn:511、scratch:252、mew:1087、purr:2114');
+  say('yawn:511、scratch:252、mew:1087、purr:2114 · 顺序不重要');
   yield* beat('b20',
+    all(tally2().opacity(1, 0.5)),
     at('逐个挑进合并段', chain(
       all(
         ...cellsA.filter((_, i) => ![9, 10, 11].includes(i)).map(c => c().opacity(0.2, 0.6)),
         ...cellsB.filter((_, i) => ![3, 10, 11].includes(i)).map(c => c().opacity(0.2, 0.6)),
       ),
       cellsA[9]().position([-292, 70], 0.9),
+      tally2Vals[0]().opacity(1, 0.4),
       cellsB[3]().position([-97, 70], 0.9),
+      tally2Vals[1]().opacity(1, 0.4),
       cellsB[10]().position([97, 70], 0.9),
+      tally2Vals[2]().opacity(1, 0.4),
       cellsB[11]().position([292, 70], 0.9),
+      tally2Vals[3]().opacity(1, 0.4),
     )),
     at('抓挠的 252', cellsB[3]().stroke(T.yellow, 0.4)),
     at('喵留 1087', chain(mergeBox().stroke(T.yellow, 0.5), mergeBox().stroke(T.green, 1.5))),
+    at('新段有自己的新表', mergeTabTag().opacity(1, 0.5)),
   );
 
   say('后台合并，读写不停');
@@ -306,20 +365,21 @@ export default makeScene2D(function* (view) {
     at('再也不改', chain(oldSegs[0]().opacity(1, 0.5), oldSegs[1]().opacity(1, 0.5), roStamp[0]().opacity(1, 0.4), roStamp[1]().opacity(1, 0.4))),
     at('后台', all(bgChip().opacity(1, 0.5), newSeg().opacity(1, 0.5), newSeg().width(480, 2.5))),
     at('照常用旧段', rwArrow().opacity(1, 0.5)),
+    at('新写入', writeChip().opacity(1, 0.5)),
   );
 
   say('切换新段，删旧段');
   yield* beat('b22',
-    at('切换', chain(switchArrow().opacity(1, 0.5), oldSegs[0]().opacity(0.15, 0.8), oldSegs[1]().opacity(0.15, 0.8), bgChip().opacity(0, 0.5))),
+    at('切换', chain(switchArrow().opacity(1, 0.5), readArrow2().opacity(1, 0.5), rwArrow().opacity(0, 0.4), writeChip().opacity(0, 0.4), oldSegs[0]().opacity(0.15, 0.8), oldSegs[1]().opacity(0.15, 0.8), bgChip().opacity(0, 0.5))),
     at('删掉', newSeg().stroke(T.green, 0.4)),
   );
 
   say('从新到旧，逐段查');
   yield* beat('b23',
-    all(oldSegs[0]().opacity(0, 0.4), oldSegs[1]().opacity(0, 0.4), bgChip().opacity(0, 0.4), newSeg().opacity(0, 0.4), rwArrow().opacity(0, 0.4), switchArrow().opacity(0, 0.4), lookSegs[0]().opacity(1, 0.5), lookTabs[0]().opacity(1, 0.4), lookDot().opacity(1, 0.4)),
+    all(oldSegs[0]().opacity(0, 0.4), oldSegs[1]().opacity(0, 0.4), bgChip().opacity(0, 0.4), newSeg().opacity(0, 0.4), rwArrow().opacity(0, 0.4), switchArrow().opacity(0, 0.4), readArrow2().opacity(0, 0.4), writeChip().opacity(0, 0.4), lookSegs[0]().opacity(1, 0.5), lookTabs[0]().opacity(1, 0.4), lookDot().opacity(1, 0.4)),
     at('最新段', lookSegs[0]().stroke(T.yellow, 0.4)),
-    at('次新', all(lookSegs[1]().opacity(1, 0.5), lookTabs[1]().opacity(1, 0.4), lookDot().position([0, -60], 0.8))),
-    at('往前', all(lookSegs[2]().opacity(1, 0.5), lookTabs[2]().opacity(1, 0.4), lookDot().position([360, -60], 0.8))),
+    at('次新', all(lookSegs[1]().opacity(1, 0.5), lookTabs[1]().opacity(1, 0.4), chain(lookDot().position([0, -60], 0.8), lookDot().position([360, -60], 0.8)))),
+    at('往前', all(lookSegs[2]().opacity(1, 0.5), lookTabs[2]().opacity(1, 0.4))),
   );
 
   say('段少，查得少');
